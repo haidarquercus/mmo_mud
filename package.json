@@ -1,9 +1,16 @@
 {
-  "dependencies": {
-    "dotenv": "^17.2.3",
-    "pg": "^8.16.3"
-  },
+  "name": "kingdom-mmo",
+  "version": "1.0.0",
+  "main": "backend/server.js",
   "scripts": {
     "start": "node backend/server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "pg": "^8.16.3",
+    "dotenv": "^17.2.3",
+    "compression": "^1.7.4",
+    "helmet": "^7.1.0"
   }
 }
