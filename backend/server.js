@@ -8,12 +8,6 @@ const { dbq } = require("./src/db");
 const { register, dispatch } = require("./src/core/commands");
 const util = require("./src/core/util");
 
-const PORT = process.env.PORT || 3000;
-const HOST = '0.0.0.0';
-server.listen(PORT, HOST, () => {
-  console.log(`Game server running on http://${HOST}:${PORT}`);
-});
-
 // ---- optional middlewares (won’t crash if not installed)
 function optRequire(name) {
   try { return require(name); }
@@ -96,7 +90,7 @@ async function devCleanupOrphans() {
 }
 
 // --------------------------------------------------------------
-// Dev reset: wipe players/settlements/markets/jobs; keep world grid & Capital
+// Dev reset (wipe everything but world)
 // --------------------------------------------------------------
 async function devResetEverythingButWorld() {
   console.log("[DEV_RESET] wiping players/settlements/markets/jobs; keeping world grid…");
@@ -110,34 +104,33 @@ async function devResetEverythingButWorld() {
   try {
     await dbq("SET CONSTRAINTS ALL DEFERRED", []);
 
-    if (await hasTable("public.world_jobs"))     await dbq("DELETE FROM public.world_jobs", []);
-    if (await hasTable("public.jobs"))           await dbq("DELETE FROM public.jobs", []);
-    if (await hasTable("public.market_makers"))  await dbq("DELETE FROM public.market_makers", []);
-    if (await hasTable("public.room_stock"))     await dbq("DELETE FROM public.room_stock", []);
-    if (await hasTable("public.homes"))          await dbq("DELETE FROM public.homes", []);
-    if (await hasTable("public.players"))        await dbq("DELETE FROM public.players", []);
+    const tables = [
+      "world_jobs", "jobs", "market_makers", "room_stock", "homes", "players"
+    ];
+    for (const t of tables) {
+      if (await hasTable(`public.${t}`)) await dbq(`DELETE FROM public.${t}`, []);
+    }
 
     if (await hasTable("public.rooms")) {
       await dbq("DELETE FROM public.rooms WHERE name <> 'Capital'", []);
     }
 
-    if (await hasTable("public.world_jobs"))     await dbq("ALTER SEQUENCE IF EXISTS world_jobs_id_seq RESTART WITH 1", []);
-    if (await hasTable("public.jobs"))           await dbq("ALTER SEQUENCE IF EXISTS jobs_id_seq RESTART WITH 1", []);
-    if (await hasTable("public.market_makers"))  await dbq("ALTER SEQUENCE IF EXISTS market_makers_id_seq RESTART WITH 1", []);
-    if (await hasTable("public.room_stock"))     await dbq("ALTER SEQUENCE IF EXISTS room_stock_id_seq RESTART WITH 1", []);
-    if (await hasTable("public.homes"))          await dbq("ALTER SEQUENCE IF EXISTS homes_id_seq RESTART WITH 1", []);
-    if (await hasTable("public.players"))        await dbq("ALTER SEQUENCE IF EXISTS players_id_seq RESTART WITH 1", []);
+    const seqs = [
+      "world_jobs_id_seq", "jobs_id_seq", "market_makers_id_seq",
+      "room_stock_id_seq", "homes_id_seq", "players_id_seq"
+    ];
+    for (const s of seqs) {
+      if (await hasTable(`public.${s}`)) await dbq(`ALTER SEQUENCE IF EXISTS ${s} RESTART WITH 1`, []);
+    }
 
-    if (await hasTable("public.rooms")) {
-      const cap = await dbq("SELECT 1 FROM rooms WHERE name='Capital' LIMIT 1", []);
-      if (!cap.length) {
-        await dbq(
-          `INSERT INTO rooms
-             (name, terrain, living_quality, distance_from_capital, tax_rate, owner_player_id,
-              world_x, world_y, price_food, price_meat, price_wood, price_stone, price_bow, price_pickaxe)
-           VALUES ('Capital','plains',0,1,10,NULL,NULL,NULL,1,3,1,2,20,25)`, []
-        );
-      }
+    const cap = await dbq("SELECT 1 FROM rooms WHERE name='Capital' LIMIT 1", []);
+    if (!cap.length) {
+      await dbq(
+        `INSERT INTO rooms
+         (name, terrain, living_quality, distance_from_capital, tax_rate, owner_player_id,
+          world_x, world_y, price_food, price_meat, price_wood, price_stone, price_bow, price_pickaxe)
+         VALUES ('Capital','plains',0,1,10,NULL,NULL,NULL,1,3,1,2,20,25)`, []
+      );
     }
 
     await dbq("COMMIT", []);
@@ -191,11 +184,10 @@ setInterval(()=> {
 }, 30000);
 
 // --------------------------------------------------------------
-// Wire connection (TOKEN-BASED IDENTITY, with cookie fallback)
+// Wire connection (Socket.IO)
 // --------------------------------------------------------------
 io.on("connection", async (socket) => {
   try {
-    // Read from auth, then query, then cookie
     const cookieHeader = socket.handshake?.headers?.cookie || "";
     const readCookie = (name) => {
       const parts = cookieHeader.split(";").map(s => s.trim());
@@ -238,10 +230,16 @@ io.on("connection", async (socket) => {
 });
 
 // --------------------------------------------------------------
-// Listen
+// Health route for Render/Netlify
+// --------------------------------------------------------------
+app.get("/healthz", (req, res) => res.json({ ok: true }));
+
+// --------------------------------------------------------------
+// Listen (single declaration!)
 // --------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || "127.0.0.1"; // set to "0.0.0.0" for LAN
+const HOST = process.env.HOST || "0.0.0.0";
 server.listen(PORT, HOST, () => {
   console.log(`Game server running on http://${HOST}:${PORT}`);
 });
+
