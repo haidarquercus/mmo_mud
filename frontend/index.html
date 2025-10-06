@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>Kingdom MMO — Game</title>
+  <link rel="stylesheet" href="styles.css"/>
+  <script src="common.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">KINGDOM // MUD</div>
+    <div style="margin-left:auto; display:flex; gap:8px;">
+      <a class="button" id="mapLink" href="map.html" style="text-decoration:none;">Map</a>
+    </div>
+    <div class="pill">alpha</div>
+  </div>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="section card">
+        <div class="title">Character</div>
+        <div id="roomName" style="font-weight:700; margin-bottom:8px;">Room: —</div>
+        <div id="username" style="margin-bottom:8px;">User: —</div>
+
+        <div class="stats-grid" style="margin-top:6px;">
+          <div class="stat-label">Gold</div>  <div class="stat-value" id="stat-gold">0</div>
+          <div class="stat-label">Fruit</div> <div class="stat-value" id="stat-food">0</div>
+          <div class="stat-label">Meat</div>  <div class="stat-value" id="stat-meat">0</div>
+          <div class="stat-label">Wood</div>  <div class="stat-value" id="stat-wood">0</div>
+          <div class="stat-label">Stone</div> <div class="stat-value" id="stat-stone">0</div>
+        </div>
+
+        <div style="margin-top:10px; color:#9db0c0; font-size:13px;">Hunger</div>
+        <div class="hunger-bar"><div class="hunger-fill" id="stat-hunger" style="width:100%"></div></div>
+
+        <div class="badges" id="badges" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="section card">
+        <div class="title">Commands</div>
+        <div class="commands">
+          <div><code>/help</code></div>
+
+          <div style="margin-top:6px;">— Core —</div>
+          <div><code>/stats</code> · <code>/status</code> · <code>/who</code> · <code>/bounties</code></div>
+          <div><code>/w Name msg</code> · <code>/pay Name amount</code> · <code>/give Name fruit|meat|wood|stone qty</code></div>
+
+          <div style="margin-top:6px;">— Survival —</div>
+          <div><code>/gather fruit</code> · <code>/hunt</code> · <code>/mine</code> · <code>/eat fruit|meat</code></div>
+
+          <div style="margin-top:6px;">— Gear —</div>
+          <div><code>/inventory | /stock</code> · <code>/craft bow|pickaxe</code> · <code>/buy fruit|meat|bow|pickaxe n</code></div>
+
+          <div style="margin-top:6px;">— Market —</div>
+          <div><code>/sell wood|stone|fruit|meat n</code> · <code>/market res|status</code> (or <code>/gomarket</code>)</div>
+          <div><code>/settax %</code> · <code>/setprice item price</code></div>
+
+          <div style="margin-top:6px;">— Settlement —</div>
+          <div><code>/travel Room</code> · <code>/settle x y</code> · <code>/where</code> · <code>/uphome hut|house|manor</code></div>
+
+          <div style="margin-top:6px;">— Roles & Governance —</div>
+          <div><code>/role</code> · <code>/promote Knight|LocalLord</code> · <code>/found Room</code> · <code>/decree msg</code> · <code>/resign</code></div>
+
+          <div style="margin-top:6px;">— Social / Combat —</div>
+          <div><code>/inspect Name</code> · <code>/attack Name</code></div>
+
+          <div style="margin-top:10px; color:#9db0c0; font-size:12px;">
+            Client-only: <code>/mute Name</code>, <code>/unmute Name</code>
+          </div>
+        </div>
+      </div>
+
+      <div class="section card">
+        <div class="title">Filters (client)</div>
+        <div class="commands">
+          <label><input type="checkbox" id="f-chat" checked/> Show chat</label><br/>
+          <label><input type="checkbox" id="f-system" checked/> Show system</label><br/>
+          <label><input type="checkbox" id="f-others" /> Show others’ routine actions</label>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <div class="console" id="console"></div>
+      <div class="inputbar">
+        <input id="input" placeholder="Type chat or /command  —  ↑/↓ history, Ctrl+L clear"/>
+        <button class="button" id="send">Send</button>
+        <button class="button" id="help">/help</button>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const ioSock = io({ auth: { token: window.__KM_TOKEN__ } });
+
+    const $ = sel => document.querySelector(sel);
+    const consoleEl = $("#console");
+    const input = $("#input");
+    const sendBtn = $("#send");
+    const helpBtn = $("#help");
+    const roomEl = $("#roomName");
+    const userEl = $("#username");
+    const badgeEl = $("#badges");
+
+    const stat = {
+      gold: $("#stat-gold"),
+      food: $("#stat-food"),
+      meat: $("#stat-meat"),
+      wood: $("#stat-wood"),
+      stone: $("#stat-stone"),
+      hunger: $("#stat-hunger")
+    };
+
+    const fChat = $("#f-chat"), fSystem = $("#f-system"), fOthers = $("#f-others");
+    let myName = ""; const muted = new Set();
+
+    function ts(){ const d=new Date(); return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}); }
+    function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function line(msg, cls=""){ const d=document.createElement("div"); d.className="line "+cls; d.innerHTML=`<span class="time">[${ts()}]</span>${escapeHtml(msg)}`; consoleEl.appendChild(d); consoleEl.scrollTop=consoleEl.scrollHeight; }
+    function parseActor(msg){ const m=msg.match(/^([A-Za-z0-9_-]{3,})\s/); return m?m[1]:null; }
+    function isRoutineAction(msg){ return /\bgathered\b/i.test(msg)||/\bate\b/i.test(msg); }
+
+    ioSock.on("chat", msg=>{
+      if(!fChat.checked) return;
+      const m=msg.match(/^([^:]+):/); const actor=m?m[1]:null;
+      if(actor && muted.has(actor)) return;
+      line(msg,"chat");
+    });
+
+    ioSock.on("system", msg=>{
+      if(!fSystem.checked) return;
+      if(!fOthers.checked && isRoutineAction(msg)){
+        const actor=parseActor(msg); if(actor && actor!==myName) return;
+      }
+      line(msg,"system");
+    });
+
+    ioSock.on("you", msg=>line(msg,"you"));
+
+    ioSock.on("state", s=>{
+      if(s.token && s.token!==window.__KM_TOKEN__){
+        localStorage.setItem("kmmoToken", s.token);
+        document.cookie=`kmmoToken=${encodeURIComponent(s.token)}; path=/; max-age=31536000; SameSite=Lax`;
+        window.__KM_TOKEN__ = s.token;
+      }
+      if(s.username){ myName=s.username; try{ localStorage.setItem("mud_user",s.username);}catch{} }
+      roomEl.textContent=`Room: ${s.room}`; userEl.textContent=`User: ${s.username}`;
+      stat.gold.textContent=s.gold??0; stat.food.textContent=s.food??0; stat.meat.textContent=s.meat??0;
+      stat.wood.textContent=s.wood??0; stat.stone.textContent=s.stone??0;
+      stat.hunger.style.width=`${Math.max(0,Math.min(100,s.hunger??100))}%`;
+      badgeEl.innerHTML=""; if(s.role&&s.role!=="Peasant") addBadge(s.role,"blue"); if(s.wanted) addBadge("WANTED","red");
+    });
+
+    function addBadge(text,color){ const b=document.createElement("div"); b.className="badge "+(color||""); b.textContent=text; badgeEl.appendChild(b); }
+
+    const history=[]; let hIdx=-1;
+    function handleLocalClientCommands(val){
+      if(val.startsWith("/mute ")){ const n=val.slice(6).trim(); if(n){muted.add(n); line(`Muted ${n}`,"you");} return true; }
+      if(val.startsWith("/unmute ")){ const n=val.slice(8).trim(); if(n){muted.delete(n); line(`Unmuted ${n}`,"you");} return true; }
+      return false;
+    }
+
+    function send(){
+      const val=input.value.trim(); if(!val) return;
+      if(handleLocalClientCommands(val)){ input.value=""; return; }
+      history.unshift(val); hIdx=-1;
+      if(val.startsWith("/")) ioSock.emit("command", val); else ioSock.emit("chat", val);
+      input.value="";
+    }
+
+    sendBtn.onclick=send; helpBtn.onclick=()=>{ input.value="/help"; send(); };
+    input.addEventListener("keydown",e=>{
+      if(e.key==="Enter") return send();
+      if(e.key==="ArrowUp"){ if(history[hIdx+1]){hIdx++;input.value=history[hIdx];input.setSelectionRange(input.value.length,input.value.length);} e.preventDefault(); }
+      if(e.key==="ArrowDown"){ if(hIdx>0){hIdx--;input.value=history[hIdx];} else {hIdx=-1;input.value="";} e.preventDefault(); }
+      if(e.ctrlKey && e.key.toLowerCase()==="l"){ consoleEl.innerHTML=""; e.preventDefault(); }
+    });
+  </script>
+</body>
+</html>
