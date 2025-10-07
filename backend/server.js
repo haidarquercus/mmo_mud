@@ -3,6 +3,7 @@ const path = require("path");
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
+const crypto = require("crypto");
 
 const { dbq } = require("./src/db");
 const { register, dispatch } = require("./src/core/commands");
@@ -18,8 +19,6 @@ const { regenerateWorldIfEmpty } = require("./src/features/world");
     console.error("[BOOT] World bootstrap failed:", e);
   }
 })();
-
-
 
 // ---- optional middlewares (won’t crash if not installed)
 function optRequire(name) {
@@ -56,7 +55,6 @@ async function bootstrapWorld() {
 }
 
 bootstrapWorld().catch(console.error);
-
 
 // --- Features (status shim) ---
 const statusFeature = require("./src/features/status");
@@ -110,11 +108,31 @@ const ctx = {
   ensureTile: util.ensureTile,
   sendState: util.sendState,
   effectsSummary: statusFeature.effectsSummary,
+
+  // Hardened getPlayer (token fallback)
   getPlayer: async (socket, refresh = false) => {
     let p = (await dbq("SELECT * FROM players WHERE socket_id=$1", [socket.id]))[0] || null;
-    if (!p || refresh) p = (await dbq("SELECT * FROM players WHERE socket_id=$1", [socket.id]))[0] || null;
+    if (p && !refresh) return p;
+
+    const cookieHeader = socket.handshake?.headers?.cookie || "";
+    const readCookie = (name) => {
+      const parts = cookieHeader.split(";").map(s => s.trim());
+      const prefix = name + "=";
+      for (const q of parts) if (q.startsWith(prefix)) return decodeURIComponent(q.slice(prefix.length));
+      return null;
+    };
+    const token =
+      socket.handshake?.auth?.token ||
+      socket.handshake?.query?.token ||
+      readCookie("kmmoToken") ||
+      null;
+
+    if (token) {
+      p = (await dbq("SELECT * FROM players WHERE token=$1", [token]))[0] || null;
+    }
     return p;
   },
+
   respawn: require("./src/core/player").respawnAsPeasant,
 };
 ctx.sys.bind(null);
@@ -131,36 +149,7 @@ async function devCleanupOrphans() {
   } catch (e) { console.warn("devCleanupOrphans:", e.message); }
 }
 
-// --------------------------------------------------------------
-// Optional dev reset (wipe world except Capital)
-// --------------------------------------------------------------
-async function devResetEverythingButWorld() {
-  console.log("[DEV_RESET] wiping all players/settlements/jobs; keeping Capital...");
-  async function hasTable(qualified) {
-    const r = await dbq("SELECT to_regclass($1) AS r", [qualified]);
-    return !!r[0]?.r;
-  }
-  await dbq("BEGIN", []);
-  try {
-    await dbq("SET CONSTRAINTS ALL DEFERRED", []);
-    const tables = [
-      "world_jobs", "jobs", "market_makers", "room_stock", "homes", "players"
-    ];
-    for (const t of tables)
-      if (await hasTable(`public.${t}`)) await dbq(`DELETE FROM public.${t}`, []);
-
-    if (await hasTable("public.rooms"))
-      await dbq("DELETE FROM public.rooms WHERE name <> 'Capital'", []);
-
-    await dbq("COMMIT", []);
-  } catch (e) {
-    await dbq("ROLLBACK", []);
-    throw e;
-  }
-}
-
 devCleanupOrphans();
-if (process.env.DEV_RESET === "1") devResetEverythingButWorld().catch(console.error);
 
 // --------------------------------------------------------------
 // Register features
@@ -205,7 +194,7 @@ setInterval(() => {
 }, 30000);
 
 // --------------------------------------------------------------
-// Connection logic with name gate
+// Connection logic with name gate (fixed reattach + prompt)
 // --------------------------------------------------------------
 io.on("connection", async (socket) => {
   try {
@@ -223,37 +212,47 @@ io.on("connection", async (socket) => {
       readCookie("kmmoToken") ||
       null;
 
-    let me = await playerCore.findByToken?.(token);
-    if (!me) {
-      // Ask for name
-      socket.emit("sys", "Welcome, traveler. Choose your name (max 12 chars):");
-      const nameTimer = setTimeout(() => {
-        socket.emit("sys", "Session timed out — please reconnect.");
-        socket.disconnect(true);
-      }, 30000);
+    let me = token ? await playerCore.findByToken(token) : null;
 
-      socket.once("chat", async (name) => {
-        if (!name || name.length > 12) {
-          socket.emit("sys", "Invalid name length.");
-          socket.disconnect(true);
-          return;
-        }
-        clearTimeout(nameTimer);
-        const uuid = util.uuid();
-        me = await playerCore.createWithName({ socketId: socket.id, token: uuid, username: name });
-        proceed(me);
-      });
-      return;
+    // Fast path for returning users
+    if (me) {
+      await dbq("UPDATE players SET socket_id=$1, last_seen=NOW() WHERE id=$2", [socket.id, me.id]);
+      me = (await dbq("SELECT * FROM players WHERE id=$1", [me.id]))[0];
+      return proceed(me);
     }
 
-    proceed(me);
+    // Ask for name if new
+    util.you(socket, "Welcome, traveler. Choose your name (2–12 chars, start with a letter):");
+
+    const timeout = setTimeout(() => {
+      util.you(socket, "Session timed out — please reconnect.");
+      socket.disconnect(true);
+    }, 30000);
+
+    socket.once("chat", async (name) => {
+      clearTimeout(timeout);
+      name = String(name || "").trim();
+      if (!/^[A-Za-z][A-Za-z0-9 _-]{1,11}$/.test(name)) {
+        util.you(socket, "Invalid name. Use 2–12 chars, start with a letter.");
+        socket.disconnect(true);
+        return;
+      }
+
+      const newToken = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
+      const player = await playerCore.createWithName({
+        socketId: socket.id,
+        token: newToken,
+        username: name
+      });
+      proceed(player);
+    });
 
     async function proceed(player) {
       const roomRow = await util.ensureRoom(player.room || "Capital");
       if (player.room !== roomRow.name)
         await dbq("UPDATE players SET room=$1 WHERE id=$2", [roomRow.name, player.id]);
-      socket.join(roomRow.name);
 
+      socket.join(roomRow.name);
       util.sys(io, roomRow.name, `${player.username} entered ${roomRow.name}`);
       util.sendState(socket, { ...player, room: roomRow.name, token: player.token });
 
