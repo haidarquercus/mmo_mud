@@ -128,6 +128,10 @@ async function ensureForSocket(socketId, usernameHint) {
 
 async function respawnAsPeasant(playerId) {
   await dbq("DELETE FROM homes WHERE player_id=$1", [playerId]);
+
+  // Remove ownership of any towns they ruled
+  await dbq("UPDATE rooms SET owner_player_id=NULL WHERE owner_player_id=$1", [playerId]);
+
   await dbq(
     `UPDATE players
         SET food=0,

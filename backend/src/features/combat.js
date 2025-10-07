@@ -4,25 +4,24 @@ const { register } = require("../core/commands");
 const { getEffects, rollModFromEffects, addEffect } = require("./status");
 const { invValue, createBountyOn, payoutBountiesFor } = require("./bounty");
 
-// simple in-memory combat cooldowns
-const turnLocks = new Map(); // key: "attackerId:targetId" or vice versa
+// Turn locks: prevents spamming — each pair must alternate
+const turnLocks = new Map();
 
 function baseCombatRoll(hunger) {
   return Math.ceil(Math.random() * 100) + Math.floor(((hunger || 50) - 50) / 2);
 }
 
-async function getCombatStats(playerId) {
-  const rows = await dbq(
-    `SELECT p.id, p.username, p.hunger, p.role,
-            ew.attack AS w_atk, ea.defense AS a_def,
+async function getCombatStats(id) {
+  const r = await dbq(
+    `SELECT p.*, ew.attack AS w_atk, ea.defense AS a_def,
             ew.quality AS w_q, ea.quality AS a_q
        FROM players p
-  LEFT JOIN equipment ew ON ew.id = p.equipped_weapon_id
-  LEFT JOIN equipment ea ON ea.id = p.equipped_armor_id
+  LEFT JOIN equipment ew ON ew.id=p.equipped_weapon_id
+  LEFT JOIN equipment ea ON ea.id=p.equipped_armor_id
       WHERE p.id=$1`,
-    [playerId]
+    [id]
   );
-  return rows[0];
+  return r[0];
 }
 
 function qualBonus(q) {
@@ -34,6 +33,22 @@ function qualBonus(q) {
   return 0;
 }
 
+/**
+ * SAFE-ZONE RULE:
+ * - Any named location / founded town (i.e., any `rooms` entry) is a safe zone.
+ * - In safe zones, PvP is allowed ONLY if either attacker or target is WANTED.
+ * - (If you later add true wilderness areas that are not rooms, you can
+ *   bypass this check by letting players be in a non-room grid.)
+ */
+async function canFightHere(attacker, target) {
+  // Wanted overrides safe zones.
+  if (attacker.wanted || target.wanted) return true;
+
+  // Player is always in some named room (town/city). Treat ALL rooms as safe zones.
+  // Therefore, if nobody is wanted, PvP is blocked here.
+  return false;
+}
+
 async function handleKill(ctx, killer, victim) {
   const loot = {
     gold: victim.gold || 0,
@@ -42,6 +57,7 @@ async function handleKill(ctx, killer, victim) {
     wood: victim.wood || 0,
     stone: victim.stone || 0,
   };
+
   await dbq(
     "UPDATE players SET gold=gold+$1, food=food+$2, meat=meat+$3, wood=wood+$4, stone=stone+$5 WHERE id=$6",
     [loot.gold, loot.food, loot.meat, loot.wood, loot.stone, killer.id]
@@ -52,14 +68,25 @@ async function handleKill(ctx, killer, victim) {
 
   const bounty = invValue(victim);
   await createBountyOn(killer.id, bounty, `murder of ${victim.username}`);
+
+  // Respawn victim (clears home/inventory/role, moves to Capital; your player.js handles this)
   await ctx.respawn(victim.id);
 
+  // Room broadcast
   ctx.sys(
     killer.room,
     `${killer.username} killed ${victim.username} and looted G:${loot.gold} F:${loot.food} M:${loot.meat} W:${loot.wood} S:${loot.stone}.`
   );
   if (paid > 0) ctx.sys(killer.room, `${killer.username} claimed ${paid}g in bounties.`);
   ctx.sys(killer.room, `${killer.username} is now WANTED. Bounty set: ${bounty} gold.`);
+
+  // Update victim client if connected
+  const vSock = ctx.socketOf(victim);
+  if (vSock) {
+    const vNow = (await dbq("SELECT * FROM players WHERE id=$1", [victim.id]))[0];
+    ctx.sendState(vSock, vNow);
+    ctx.you(vSock, "You have been slain. You awaken back in the Capital...");
+  }
 }
 
 function lockTurn(a, b) {
@@ -69,22 +96,27 @@ function lockTurn(a, b) {
   setTimeout(() => { turnLocks.delete(k1); turnLocks.delete(k2); }, 30000);
 }
 function canAttack(a, b) {
-  return !turnLocks.has(`${b}:${a}`); // can't attack if you just attacked and waiting for counter
+  // You can't attack if you were the last to act in this pair; the other side must respond.
+  return !turnLocks.has(`${b}:${a}`);
 }
 
-function initCombatFeature(registry) {
+function initCombatFeature(_registry) {
   register("/attack", async (ctx, socket, parts) => {
     const me = await ctx.getPlayer(socket);
-    const name = parts[1];
-    if (!name) return ctx.you(socket, "Usage: /attack Name");
+    const targetName = parts[1];
+    if (!targetName) return ctx.you(socket, "Usage: /attack Name");
 
-    const ts = await dbq(
+    const targets = await dbq(
       "SELECT * FROM players WHERE room=$1 AND username ILIKE $2 AND id<>$3",
-      [me.room, name + "%", me.id]
+      [me.room, targetName + "%", me.id]
     );
-    if (!ts.length) return ctx.you(socket, "No such target here.");
-    if (ts.length > 1) return ctx.you(socket, "Ambiguous name.");
-    const target = ts[0];
+    if (!targets.length) return ctx.you(socket, "No such target here.");
+    if (targets.length > 1) return ctx.you(socket, "Ambiguous name.");
+    const target = targets[0];
+
+    if (!await canFightHere(me, target)) {
+      return ctx.you(socket, "This is a town/city safe zone — you may only attack WANTED players here.");
+    }
 
     if (!canAttack(me.id, target.id))
       return ctx.you(socket, "Wait your turn — your opponent must respond.");
@@ -95,34 +127,47 @@ function initCombatFeature(registry) {
     const myEff = await getEffects(me.id);
     const tgEff = await getEffects(target.id);
 
-    let myRoll =
-      baseCombatRoll(A.hunger) +
-      rollModFromEffects(myEff) +
-      (A.w_atk || 0) +
-      qualBonus(A.w_q);
-    let tgRoll =
-      baseCombatRoll(B.hunger) +
-      rollModFromEffects(tgEff) +
-      (B.a_def || 0) +
-      qualBonus(B.a_q);
+    let atkRoll = baseCombatRoll(A.hunger) + rollModFromEffects(myEff) + (A.w_atk || 0) + qualBonus(A.w_q);
+    let defRoll = baseCombatRoll(B.hunger) + rollModFromEffects(tgEff) + (B.a_def || 0) + qualBonus(B.a_q);
 
-    if ((A.role || "") === "Knight" && !!B.wanted) myRoll += 15;
+    // Knight edge vs WANTED
+    if ((A.role || "") === "Knight" && B.wanted) atkRoll += 15;
 
-    ctx.sys(me.room, `${A.username} attacks ${B.username}! (A:${myRoll} vs D:${tgRoll})`);
+    ctx.sys(A.room, `${A.username} attacks ${B.username}! (A:${atkRoll} vs D:${defRoll})`);
 
-    if (myRoll > tgRoll + 10) {
+    if (atkRoll > defRoll + 10) {
       await handleKill(ctx, A, B);
-    } else if (myRoll > tgRoll) {
+    } else if (atkRoll > defRoll) {
       const dmg = Math.min(20 + (A.w_atk || 0), 50);
-      const newH = Math.max(1, (B.hunger || 100) - dmg);
+      const newH = Math.max(0, (B.hunger || 100) - dmg);
       await dbq("UPDATE players SET hunger=$1 WHERE id=$2", [newH, B.id]);
-      ctx.sys(me.room, `${A.username} hits ${B.username} (-${dmg} health).`);
+
+      // Broadcast and sync both sides
+      ctx.sys(A.room, `${A.username} hits ${B.username} (-${dmg} health).`);
+
+      const bSock = ctx.socketOf(B);
+      if (bSock) {
+        const bNow = (await dbq("SELECT * FROM players WHERE id=$1", [B.id]))[0];
+        ctx.sendState(bSock, bNow);
+        if (newH <= 0) {
+          await handleKill(ctx, A, B);
+        } else {
+          ctx.you(bSock, `You were hit for ${dmg} damage!`);
+        }
+      }
     } else {
       const drain = 5;
       const newH = Math.max(1, (A.hunger || 100) - drain);
       await dbq("UPDATE players SET hunger=$1 WHERE id=$2", [newH, A.id]);
       await addEffect(A.id, "Exhausted", 1, 60);
-      ctx.sys(me.room, `${A.username} missed and is exhausted (-${drain} health).`);
+
+      ctx.sys(A.room, `${A.username} missed and is exhausted (-${drain} health).`);
+
+      const aSock = ctx.socketOf(A);
+      if (aSock) {
+        const aNow = (await dbq("SELECT * FROM players WHERE id=$1", [A.id]))[0];
+        ctx.sendState(aSock, aNow);
+      }
     }
 
     lockTurn(A.id, B.id);

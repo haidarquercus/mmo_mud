@@ -166,24 +166,34 @@ function initMarketFeature(registry) {
     const buffs = ctx.getRoomBuffs ? await ctx.getRoomBuffs(room.name) : {};
     const taxFree = Number.isFinite(buffs.tax_free_up_to) ? buffs.tax_free_up_to : (room.tax_free_up_to || 10);
 
-    // tools path
-    if (BUY_TOOL.has(item)){
+    // TOOL path → now becomes EQUIPMENT purchase
+    if (BUY_TOOL.has(item)) {
       const base = item === "bow" ? (room.price_bow ?? 20) : (room.price_pickaxe ?? 25);
       const discounted = Math.ceil(base * (1 - (buffs.tool_discount || 0)));
       const price = buyCost(discounted, room.tax_rate, taxFree);
-      if ((me.gold||0) < price) return ctx.you(socket, `Need ${price} gold.`);
+      if ((me.gold || 0) < price) return ctx.you(socket, `Need ${price} gold.`);
 
       await dbq("UPDATE players SET gold=gold-$1 WHERE id=$2", [price, me.id]);
-      const { giveTool, TOOL } = require("./inventory");
-      await giveTool(me.id, item);
 
-      const me2 = (await dbq("SELECT * FROM players WHERE id=$1",[me.id]))[0];
-      ctx.sys(me.room, `${me.username} bought ${TOOL[item].name} for ${price}g.`);
+      // INSERT into equipment table instead of player_tools
+      const slot = item === "bow" ? "weapon" : "weapon";
+      const name = item === "bow" ? "Wooden Bow" : "Stone Pickaxe";
+      const quality = "Normal";
+      const attack = item === "bow" ? 8 : 5;
+      const defense = 0;
+
+      await dbq(
+        "INSERT INTO equipment (player_id, slot, name, quality, attack, defense) VALUES ($1,$2,$3,$4,$5,$6)",
+        [me.id, slot, name, quality, attack, defense]
+      );
+
+      const me2 = (await dbq("SELECT * FROM players WHERE id=$1", [me.id]))[0];
+      ctx.sys(me.room, `${me.username} bought ${name} for ${price}g.`);
       ctx.sendState(socket, me2);
       return;
     }
 
-    // resource path
+    // RESOURCE path (unchanged)
     if (!BUY_RES.has(item)) return ctx.you(socket, "Usage: /buy bow|pickaxe  OR  /buy fruit|meat|wood|stone qty");
     const qty = Number(parts[2]);
     if (!Number.isInteger(qty) || qty <= 0) return ctx.you(socket, "Usage: /buy fruit|meat|wood|stone qty");
@@ -198,26 +208,26 @@ function initMarketFeature(registry) {
       meat: room.price_meat ?? 3,
     };
     const gross = qty * (priceMap[res] || 0);
-    const cost  = buyCost(gross, room.tax_rate, taxFree);
+    const cost = buyCost(gross, room.tax_rate, taxFree);
 
-    // check stock
     const have = await getStock(room.id, res);
     if (have < qty) return ctx.you(socket, `Market only has ${have} ${label} available.`);
-    if ((me.gold||0) < cost) return ctx.you(socket, `Need ${cost} gold.`);
+    if ((me.gold || 0) < cost) return ctx.you(socket, `Need ${cost} gold.`);
 
-    const next = { ...me, [res]: (me[res]||0) + qty, gold: (me.gold||0) - cost };
+    const next = { ...me, [res]: (me[res] || 0) + qty, gold: (me.gold || 0) - cost };
     await dbq(
       "UPDATE players SET gold=$1, wood=$2, stone=$3, food=$4, meat=$5 WHERE id=$6",
-      [next.gold, next.wood||0, next.stone||0, next.food||0, next.meat||0, me.id]
+      [next.gold, next.wood || 0, next.stone || 0, next.food || 0, next.meat || 0, me.id]
     );
 
     await adjustStock(room.id, res, -qty);
     await payMakerCommission(ctx, room.id, room.name, res, gross);
 
-    const taxedTxt = gross <= taxFree ? `no tax (≤${taxFree}g)` : `+tax ${room.tax_rate||0}%`;
+    const taxedTxt = gross <= taxFree ? `no tax (≤${taxFree}g)` : `+tax ${room.tax_rate || 0}%`;
     ctx.sys(me.room, `${me.username} bought ${qty} ${label} for ${cost}g (${taxedTxt}).`);
     ctx.sendState(socket, next);
   }, "bow|pickaxe  OR  fruit|meat|wood|stone qty — buy from market");
+
 
   // ---- STOCK readout ----
   register("/stock", async (ctx, socket) => {
