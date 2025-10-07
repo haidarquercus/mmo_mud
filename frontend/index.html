@@ -69,36 +69,74 @@
 
       <div class="section card">
         <div class="title">Commands</div>
-        <div class="commands">
-          <div><code>/help</code></div>
-          <div style="margin-top:6px;">— Core —</div>
-          <div><code>/stats</code> · <code>/status</code> · <code>/who</code> · <code>/bounties</code></div>
-          <div><code>/w Name msg</code> · <code>/pay Name amount</code> · <code>/give Name fruit|meat|wood|stone qty</code></div>
+        <div class="commands" id="commandsList">
 
-          <div style="margin-top:6px;">— Survival —</div>
-          <div><code>/gather fruit</code> · <code>/hunt</code> · <code>/mine</code> · <code>/eat fruit|meat</code></div>
+          <!-- Core -->
+          <div><strong>— Core —</strong></div>
+          <div class="cmd" title="View your current stats and inventory.">/stats</div>
+          <div class="cmd" title="Alias of /stats showing extended effects.">/status</div>
+          <div class="cmd" title="List all online players.">/who</div>
+          <div class="cmd" title="Show bounty targets and wanted players.">/bounties</div>
+          <div class="cmd" title="Send a private message. Format: /w Name message">/w</div>
+          <div class="cmd" title="Pay another player gold. Format: /pay Name amount">/pay</div>
+          <div class="cmd" title="Give another player a resource. Format: /give Name fruit|meat|wood|stone qty">/give</div>
 
-          <div style="margin-top:6px;">— Gear —</div>
-          <div><code>/inventory | /stock</code> · <code>/craft bow|pickaxe</code> · <code>/buy fruit|meat|bow|pickaxe n</code></div>
+          <!-- Survival -->
+          <div><strong>— Survival —</strong></div>
+          <div class="cmd" title="Gather fruit in your current biome. Chance depends on terrain.">/gather fruit</div>
+          <div class="cmd" title="Hunt animals for meat. Requires stamina.">/hunt</div>
+          <div class="cmd" title="Mine for stone or ore in hills or mountains.">/mine</div>
+          <div class="cmd" title="Eat food to restore hunger. Format: /eat fruit|meat">/eat</div>
 
-          <div style="margin-top:6px;">— Market —</div>
-          <div><code>/sell wood|stone|fruit|meat n</code> · <code>/market res|status</code> (or <code>/gomarket</code>)</div>
-          <div><code>/settax %</code> · <code>/setprice item price</code></div>
+          <!-- Gear -->
+          <div><strong>— Gear —</strong></div>
+          <div class="cmd" title="View your current inventory. Alias: /stock">/inventory</div>
+          <div class="cmd" title="Craft tools. Requires wood and stone. Format: /craft bow|pickaxe">/craft</div>
+          <div class="cmd" title="Buy resources or items from the market. Format: /buy fruit|meat|bow|pickaxe n">/buy</div>
 
-          <div style="margin-top:6px;">— Settlement —</div>
-          <div><code>/travel Room</code> · <code>/settle x y</code> · <code>/where</code> · <code>/uphome hut|house|manor</code></div>
+          <!-- Market -->
+          <div><strong>— Market —</strong></div>
+          <div class="cmd" title="Sell resources to the market. Format: /sell wood|stone|fruit|meat n">/sell</div>
+          <div class="cmd" title="View or refresh market data. Aliases: /market res|status or /gomarket">/market</div>
+          <div class="cmd" title="Set your local tax rate (Lords only). Format: /settax %">/settax</div>
+          <div class="cmd" title="Set price of items in your local market (Lords only). Format: /setprice item price">/setprice</div>
 
-          <div style="margin-top:6px;">— Roles & Governance —</div>
-          <div><code>/role</code> · <code>/promote Knight|LocalLord</code> · <code>/found Room</code> · <code>/decree msg</code> · <code>/resign</code></div>
+          <!-- Settlement -->
+          <div><strong>— Settlement —</strong></div>
+          <div class="cmd" title="Travel to another room or town. Example: /travel Capital">/travel</div>
+          <div class="cmd" title="Found a new town at coordinates. Example: /foundat x y TownName">/foundat</div>
+          <div class="cmd" title="Claim or settle wilderness. Example: /settle x y">/settle</div>
+          <div class="cmd" title="Check your location and coordinates.">/where</div>
+          <div class="cmd" title="Upgrade your home. Options: hut, house, manor.">/uphome</div>
 
-          <div style="margin-top:6px;">— Social / Combat —</div>
-          <div><code>/inspect Name</code> · <code>/attack Name</code></div>
+          <!-- Roles & Governance -->
+          <div><strong>— Roles & Governance —</strong></div>
+          <div class="cmd" title="Check your current role (Peasant, Knight, Lord).">/role</div>
+          <div class="cmd" title="Promote a player if eligible.">/promote</div>
+          <div class="cmd" title="Found a new room or region (Admin/LocalLord).">/found</div>
+          <div class="cmd" title="Announce a decree to your subjects (Lords only).">/decree</div>
+          <div class="cmd" title="Resign your current role.">/resign</div>
 
+          <!-- Social / Combat -->
+          <div><strong>— Social / Combat —</strong></div>
+          <div class="cmd" title="Inspect another player’s stats. Format: /inspect Name">/inspect</div>
+          <div class="cmd" title="Attack another player in your area. Requires weapon.">/attack</div>
+
+          <!-- World / System -->
+          <div><strong>— World / System —</strong></div>
+          <div class="cmd" title="Show world map, towns, and your location.">/world</div>
+          <div class="cmd" title="View or run background world jobs (admin only).">/jobs</div>
+          <div class="cmd" title="Grant yourself test resources (admin debug).">/cheat</div>
+
+          <!-- Client-only -->
           <div style="margin-top:10px; color:#9db0c0; font-size:12px;">
-            Client-only: <code>/mute Name</code>, <code>/unmute Name</code>
+            Client-only: 
+            <span class="cmd" title="Mute a player’s messages in your client only.">/mute Name</span>, 
+            <span class="cmd" title="Unmute a previously muted player.">/unmute Name</span>
           </div>
         </div>
       </div>
+
 
       <div class="section card">
         <div class="title">Filters (client)</div>
