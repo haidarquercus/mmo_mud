@@ -122,6 +122,17 @@
   </div>
 
   <script>
+    // ---- Persistent token management ----
+    window.__KM_TOKEN__ = localStorage.getItem("kmmoToken") || null;
+
+    function setKmmoToken(t) {
+      if (!t) return;
+      localStorage.setItem("kmmoToken", t);
+      document.cookie = `kmmoToken=${encodeURIComponent(t)}; path=/; max-age=31536000; SameSite=Lax`;
+      window.__KM_TOKEN__ = t;
+    }
+
+    // Connect with stored token if available
     const ioSock = io({ auth: { token: window.__KM_TOKEN__ } });
 
     const $ = sel => document.querySelector(sel);
@@ -169,17 +180,15 @@
     ioSock.on("you", msg=>line(msg,"you"));
 
     ioSock.on("state", s=>{
-      if(s.token && s.token!==window.__KM_TOKEN__){
-        localStorage.setItem("kmmoToken", s.token);
-        document.cookie=`kmmoToken=${encodeURIComponent(s.token)}; path=/; max-age=31536000; SameSite=Lax`;
-        window.__KM_TOKEN__ = s.token;
-      }
+      if(s.token && s.token!==window.__KM_TOKEN__) setKmmoToken(s.token);
       if(s.username){ myName=s.username; try{ localStorage.setItem("mud_user",s.username);}catch{} }
       roomEl.textContent=`Room: ${s.room}`; userEl.textContent=`User: ${s.username}`;
       stat.gold.textContent=s.gold??0; stat.food.textContent=s.food??0; stat.meat.textContent=s.meat??0;
       stat.wood.textContent=s.wood??0; stat.stone.textContent=s.stone??0;
       stat.hunger.style.width=`${Math.max(0,Math.min(100,s.hunger??100))}%`;
-      badgeEl.innerHTML=""; if(s.role&&s.role!=="Peasant") addBadge(s.role,"blue"); if(s.wanted) addBadge("WANTED","red");
+      badgeEl.innerHTML="";
+      if(s.role&&s.role!=="Peasant") addBadge(s.role,"blue");
+      if(s.wanted) addBadge("WANTED","red");
     });
 
     function addBadge(text,color){ const b=document.createElement("div"); b.className="badge "+(color||""); b.textContent=text; badgeEl.appendChild(b); }
@@ -207,5 +216,7 @@
       if(e.ctrlKey && e.key.toLowerCase()==="l"){ consoleEl.innerHTML=""; e.preventDefault(); }
     });
   </script>
+
+
 </body>
 </html>

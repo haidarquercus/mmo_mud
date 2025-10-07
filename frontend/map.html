@@ -80,145 +80,198 @@
   </div>
 
   <script>
-    (function syncCookie(){
-      const t=localStorage.getItem("kmmoToken");
-      if(t) document.cookie=`kmmoToken=${encodeURIComponent(t)}; path=/; max-age=31536000; SameSite=Lax`;
+    // --- Ensure the same player session as the game ---
+    (function ensureKmmoToken() {
+      const t = localStorage.getItem("kmmoToken");
+      if (t) {
+        document.cookie = `kmmoToken=${encodeURIComponent(t)}; path=/; max-age=31536000; SameSite=Lax`;
+        console.log("[map] ✅ Token synced from localStorage");
+      } else {
+        console.warn("[map] ⚠️ No kmmoToken found — map cannot identify your player.");
+        const warn = document.createElement("div");
+        warn.style.cssText = "padding:8px;margin:8px 0;background:#281818;color:#ffaaaa;font-weight:bold;";
+        warn.textContent = "⚠️ Not linked to a player session. Go back to the Game page and log in first.";
+        document.body.prepend(warn);
+      }
     })();
 
-    const canvas=document.getElementById("world");
-    const ctx=canvas.getContext("2d");
-    const wrap=document.getElementById("canvasWrap");
-    const scaleSel=document.getElementById("scaleSel");
-    const btnRefresh=document.getElementById("btnRefresh");
-    const btnCenter=document.getElementById("btnCenter");
-    const btnCopyCoords=document.getElementById("btnCopyCoords");
-    const btnCopyCmd=document.getElementById("btnCopyCmd");
+    // --- Canvas & DOM setup ---
+    const canvas = document.getElementById("world");
+    const ctx = canvas.getContext("2d");
+    const wrap = document.getElementById("canvasWrap");
+    const scaleSel = document.getElementById("scaleSel");
+    const btnRefresh = document.getElementById("btnRefresh");
+    const btnCenter = document.getElementById("btnCenter");
+    const btnCopyCoords = document.getElementById("btnCopyCoords");
+    const btnCopyCmd = document.getElementById("btnCopyCmd");
 
-    const lineXY=document.getElementById("line-xy");
-    const lineBiome=document.getElementById("line-biome");
-    const lineLQ=document.getElementById("line-lq");
-    const lineTown=document.getElementById("line-town");
-    const lineOwner=document.getElementById("line-owner");
-    const linePop=document.getElementById("line-pop");
-    const lineMe=document.getElementById("line-me");
+    const lineXY = document.getElementById("line-xy");
+    const lineBiome = document.getElementById("line-biome");
+    const lineLQ = document.getElementById("line-lq");
+    const lineTown = document.getElementById("line-town");
+    const lineOwner = document.getElementById("line-owner");
+    const linePop = document.getElementById("line-pop");
+    const lineMe = document.getElementById("line-me");
 
-    const C={ocean:"#1e88e5",coast:"#42a5f5",plains:"#66bb6a",forest:"#388e3c",hills:"#8d6e63",mountain:"#9e9e9e"};
-    const CAP="#ffd54a",TOWN="#b388ff",YOU="#ff4d4d";
+    // --- Color palette ---
+    const C = {
+      ocean: "#1e88e5",
+      coast: "#42a5f5",
+      plains: "#66bb6a",
+      forest: "#388e3c",
+      hills: "#8d6e63",
+      mountain: "#9e9e9e",
+    };
+    const CAP = "#ffd54a", TOWN = "#b388ff", YOU = "#ff4d4d";
 
-    let META=null,CELLS=[],TOWNS=[];
-    let CELLMAP=new Map(),TOWNMAP=new Map();
-    let cellSize=Number(scaleSel.value);
-    let selected=null,myPos=null;
+    let META = null, CELLS = [], TOWNS = [];
+    const CELLMAP = new Map(), TOWNMAP = new Map();
+    let cellSize = Number(scaleSel.value);
+    let selected = null, myPos = null;
 
-    const key=(x,y)=>`${x},${y}`;
-    const colorFor=b=>C[b]||"#666";
+    const key = (x, y) => `${x},${y}`;
+    const colorFor = b => C[b] || "#666";
 
-    async function fetchGrid(){
-      const r=await fetch("/api/world/grid");
-      const j=await r.json();
-      if(!j.ok||!j.meta){drawEmpty("World not generated yet.");return;}
-      META=j.meta;CELLS=j.cells||[];TOWNS=j.towns||[];
-      rebuildLookups();await fetchMyPos();draw();renderMeLine();
+    // --- Fetch world grid + towns ---
+    async function fetchGrid() {
+      const r = await fetch("/api/world/grid");
+      const j = await r.json();
+      if (!j.ok || !j.meta) { drawEmpty("World not generated yet."); return; }
+      META = j.meta; CELLS = j.cells || []; TOWNS = j.towns || [];
+      rebuildLookups(); await fetchMyPos(); draw(); renderMeLine();
     }
 
-    function rebuildLookups(){
-      CELLMAP.clear();TOWNMAP.clear();
-      for(const c of CELLS)CELLMAP.set(key(c.x,c.y),{biome:c.biome,lq:c.lq});
-      for(const t of TOWNS)TOWNMAP.set(key(t.x,t.y),t);
+    function rebuildLookups() {
+      CELLMAP.clear(); TOWNMAP.clear();
+      for (const c of CELLS) CELLMAP.set(key(c.x, c.y), { biome: c.biome, lq: c.lq });
+      for (const t of TOWNS) TOWNMAP.set(key(t.x, t.y), t);
     }
 
-    async function fetchMyPos(){
-      myPos=null;
-      try{
-        const u=localStorage.getItem("mud_user");
-        if(!u)return;
-        const r=await fetch(`/api/world/playerpos?u=${encodeURIComponent(u)}`);
-        const j=await r.json();
-        if(j.ok)myPos=j;
-      }catch{}
+    // --- Fetch player position (linked to username) ---
+    async function fetchMyPos() {
+      myPos = null;
+      try {
+        const u = localStorage.getItem("mud_user");
+        if (!u) return;
+        const r = await fetch(`/api/world/playerpos?u=${encodeURIComponent(u)}`);
+        const j = await r.json();
+        if (j.ok) myPos = j;
+      } catch (e) {
+        console.error("[map] fetchMyPos error:", e);
+      }
     }
 
-    function drawEmpty(text){
-      ctx.clearRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle="#0a0f14";ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle="#9db0c0";ctx.font="28px ui-monospace, monospace";
-      ctx.fillText(text,20,50);
+    function drawEmpty(text) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#0a0f14"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#9db0c0"; ctx.font = "28px ui-monospace, monospace";
+      ctx.fillText(text, 20, 50);
     }
 
-    function draw(){
-      if(!META)return;
-      cellSize=Number(scaleSel.value);
-      canvas.width=META.width*cellSize;canvas.height=META.height*cellSize;
+    // --- Draw entire map ---
+    function draw() {
+      if (!META) return;
+      cellSize = Number(scaleSel.value);
+      canvas.width = META.width * cellSize;
+      canvas.height = META.height * cellSize;
 
-      for(const c of CELLS){ctx.fillStyle=colorFor(c.biome);ctx.fillRect(c.x*cellSize,c.y*cellSize,cellSize,cellSize);}
-      for(const t of TOWNS){
-        const x=t.x*cellSize+Math.floor(cellSize/2),y=t.y*cellSize+Math.floor(cellSize/2);
-        ctx.strokeStyle="#000";ctx.lineWidth=Math.max(1,Math.floor(cellSize/3));
-        ctx.beginPath();ctx.arc(x,y,Math.max(2,cellSize*0.45),0,Math.PI*2);ctx.stroke();
-        ctx.fillStyle=t.is_capital?CAP:TOWN;
-        ctx.beginPath();ctx.arc(x,y,Math.max(2,cellSize*0.35),0,Math.PI*2);ctx.fill();
+      for (const c of CELLS) {
+        ctx.fillStyle = colorFor(c.biome);
+        ctx.fillRect(c.x * cellSize, c.y * cellSize, cellSize, cellSize);
       }
 
-      if(myPos&&myPos.exists&&!myPos.isTown&&myPos.x!=null&&myPos.y!=null){
-        const x=myPos.x*cellSize+Math.floor(cellSize/2);
-        const y=myPos.y*cellSize+Math.floor(cellSize/2);
-        ctx.strokeStyle="#000";ctx.lineWidth=Math.max(1,Math.floor(cellSize/3));
-        ctx.beginPath();ctx.arc(x,y,Math.max(2,cellSize*0.5),0,Math.PI*2);ctx.stroke();
-        ctx.fillStyle=YOU;ctx.beginPath();ctx.arc(x,y,Math.max(2,cellSize*0.4),0,Math.PI*2);ctx.fill();
+      for (const t of TOWNS) {
+        const x = t.x * cellSize + Math.floor(cellSize / 2);
+        const y = t.y * cellSize + Math.floor(cellSize / 2);
+        ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, Math.floor(cellSize / 3));
+        ctx.beginPath(); ctx.arc(x, y, Math.max(2, cellSize * 0.45), 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = t.is_capital ? CAP : TOWN;
+        ctx.beginPath(); ctx.arc(x, y, Math.max(2, cellSize * 0.35), 0, Math.PI * 2); ctx.fill();
       }
 
-      if(cellSize>=6){
-        ctx.font=`${Math.max(10,Math.floor(cellSize*1.5))}px ui-monospace, monospace`;
-        ctx.textAlign="left";ctx.textBaseline="middle";
-        for(const t of TOWNS){
-          const x=t.x*cellSize+cellSize*0.6,y=t.y*cellSize;
-          ctx.fillStyle="rgba(0,0,0,0.7)";ctx.fillText(t.name,x+1,y+1);
-          ctx.fillStyle=t.is_capital?CAP:TOWN;ctx.fillText(t.name,x,y);
+      if (myPos && myPos.exists && !myPos.isTown && myPos.x != null && myPos.y != null) {
+        const x = myPos.x * cellSize + Math.floor(cellSize / 2);
+        const y = myPos.y * cellSize + Math.floor(cellSize / 2);
+        ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(1, Math.floor(cellSize / 3));
+        ctx.beginPath(); ctx.arc(x, y, Math.max(2, cellSize * 0.5), 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = YOU; ctx.beginPath(); ctx.arc(x, y, Math.max(2, cellSize * 0.4), 0, Math.PI * 2); ctx.fill();
+      }
+
+      if (cellSize >= 6) {
+        ctx.font = `${Math.max(10, Math.floor(cellSize * 1.5))}px ui-monospace, monospace`;
+        ctx.textAlign = "left"; ctx.textBaseline = "middle";
+        for (const t of TOWNS) {
+          const x = t.x * cellSize + cellSize * 0.6, y = t.y * cellSize;
+          ctx.fillStyle = "rgba(0,0,0,0.7)"; ctx.fillText(t.name, x + 1, y + 1);
+          ctx.fillStyle = t.is_capital ? CAP : TOWN; ctx.fillText(t.name, x, y);
         }
       }
 
-      if(selected){
-        ctx.strokeStyle="#fff";ctx.lineWidth=Math.max(1,Math.floor(cellSize/4));
-        ctx.strokeRect(selected.x*cellSize+0.5,selected.y*cellSize+0.5,cellSize-1,cellSize-1);
+      if (selected) {
+        ctx.strokeStyle = "#fff"; ctx.lineWidth = Math.max(1, Math.floor(cellSize / 4));
+        ctx.strokeRect(selected.x * cellSize + 0.5, selected.y * cellSize + 0.5, cellSize - 1, cellSize - 1);
       }
     }
 
-    function renderMeLine(){
-      if(!myPos||!myPos.exists){lineMe.textContent="";return;}
-      if(myPos.isTown)lineMe.textContent=`You are in ${myPos.is_capital?"the Capital":"a town"} (${myPos.room}).`;
-      else if(myPos.x!=null)lineMe.textContent=`You are here: (${myPos.x},${myPos.y}) — wilderness`;
-      else lineMe.textContent=`Your current room is not mapped.`;
+    function renderMeLine() {
+      if (!myPos || !myPos.exists) { lineMe.textContent = ""; return; }
+      if (myPos.isTown) lineMe.textContent = `You are in ${myPos.is_capital ? "the Capital" : "a town"} (${myPos.room}).`;
+      else if (myPos.x != null) lineMe.textContent = `You are here: (${myPos.x},${myPos.y}) — wilderness`;
+      else lineMe.textContent = `Your current room is not mapped.`;
     }
 
-    function centerOn(gx,gy){
-      const tx=gx*cellSize+cellSize/2-wrap.clientWidth/2;
-      const ty=gy*cellSize+cellSize/2-wrap.clientHeight/2;
-      wrap.scrollTo({left:Math.max(0,tx),top:Math.max(0,ty),behavior:"smooth"});
+    function centerOn(gx, gy) {
+      const tx = gx * cellSize + cellSize / 2 - wrap.clientWidth / 2;
+      const ty = gy * cellSize + cellSize / 2 - wrap.clientHeight / 2;
+      wrap.scrollTo({ left: Math.max(0, tx), top: Math.max(0, ty), behavior: "smooth" });
     }
 
-    canvas.addEventListener("click",e=>{
-      if(!META)return;
-      const r=canvas.getBoundingClientRect();
-      const gx=Math.floor((e.clientX-r.left)/cellSize);
-      const gy=Math.floor((e.clientY-r.top)/cellSize);
-      if(gx<0||gy<0||gx>=META.width||gy>=META.height)return;
-      selected={x:gx,y:gy};
-      const c=CELLMAP.get(key(gx,gy)),t=TOWNMAP.get(key(gx,gy));
-      lineXY.textContent=`Cell: (${gx}, ${gy})`;
-      lineBiome.textContent=`Biome: ${c?c.biome:"?"}`;
-      lineLQ.textContent=`Living Quality: ${c&&Number.isFinite(c.lq)?c.lq:"?"}`;
-      if(t){lineTown.textContent=`${t.is_capital?"Capital":"Town"}: ${t.name}`;
-        lineOwner.textContent=`Lord: ${t.owner??"—"}`;linePop.textContent=`Population: ${t.pop??0}`;}
-      else{lineTown.textContent="";lineOwner.textContent="";linePop.textContent="";}
+    // --- Interaction handlers ---
+    canvas.addEventListener("click", e => {
+      if (!META) return;
+      const r = canvas.getBoundingClientRect();
+      const gx = Math.floor((e.clientX - r.left) / cellSize);
+      const gy = Math.floor((e.clientY - r.top) / cellSize);
+      if (gx < 0 || gy < 0 || gx >= META.width || gy >= META.height) return;
+      selected = { x: gx, y: gy };
+      const c = CELLMAP.get(key(gx, gy)), t = TOWNMAP.get(key(gx, gy));
+      lineXY.textContent = `Cell: (${gx}, ${gy})`;
+      lineBiome.textContent = `Biome: ${c ? c.biome : "?"}`;
+      lineLQ.textContent = `Living Quality: ${c && Number.isFinite(c.lq) ? c.lq : "?"}`;
+      if (t) {
+        lineTown.textContent = `${t.is_capital ? "Capital" : "Town"}: ${t.name}`;
+        lineOwner.textContent = `Lord: ${t.owner ?? "—"}`;
+        linePop.textContent = `Population: ${t.pop ?? 0}`;
+      } else {
+        lineTown.textContent = ""; lineOwner.textContent = ""; linePop.textContent = "";
+      }
       draw();
     });
 
-    btnRefresh.addEventListener("click",fetchGrid);
-    scaleSel.addEventListener("change",draw);
-    btnCenter.addEventListener("click",async()=>{await fetchMyPos();renderMeLine();draw();if(myPos&&myPos.x!=null&&myPos.y!=null)centerOn(myPos.x,myPos.y);});
-    btnCopyCoords.addEventListener("click",()=>{if(!selected)return;navigator.clipboard.writeText(`${selected.x},${selected.y}`).catch(()=>{});});
-    btnCopyCmd.addEventListener("click",()=>{if(!selected)return;const k=key(selected.x,selected.y);const town=TOWNMAP.get(k);let cmd="";if(town)cmd=`/travel ${town.name}`;else cmd=`/foundat ${selected.x} ${selected.y} <TownName>`;navigator.clipboard.writeText(cmd).catch(()=>{});});
+    // --- Buttons ---
+    btnRefresh.addEventListener("click", fetchGrid);
+    scaleSel.addEventListener("change", draw);
+    btnCenter.addEventListener("click", async () => {
+      await fetchMyPos(); renderMeLine(); draw();
+      if (myPos && myPos.x != null && myPos.y != null) centerOn(myPos.x, myPos.y);
+    });
+    btnCopyCoords.addEventListener("click", () => {
+      if (!selected) return;
+      navigator.clipboard.writeText(`${selected.x},${selected.y}`).catch(() => { });
+    });
+    btnCopyCmd.addEventListener("click", () => {
+      if (!selected) return;
+      const k = key(selected.x, selected.y);
+      const town = TOWNMAP.get(k);
+      let cmd = "";
+      if (town) cmd = `/travel ${town.name}`;
+      else cmd = `/foundat ${selected.x} ${selected.y} <TownName>`;
+      navigator.clipboard.writeText(cmd).catch(() => { });
+    });
+
+    // --- Init ---
     fetchGrid().catch(console.error);
   </script>
+
 </body>
 </html>
