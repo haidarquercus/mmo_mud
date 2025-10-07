@@ -3,7 +3,7 @@ const express = require("express");
 const { dbq } = require("../db");
 
 /**
- * API
+ * API:
  *  POST /api/world/generate?seed=kingdom&size=256&force=0|1
  *  GET  /api/world/meta
  *  GET  /api/world/grid   -> { ok, meta, cells:[{x,y,biome,lq}], towns:[...] }
@@ -13,19 +13,13 @@ const { dbq } = require("../db");
 
 function nowIso() { return new Date().toISOString(); }
 
-// ---------- harden schema at runtime ----------
+// ---------- Harden schema at runtime ----------
 async function ensureWorldCellsColumns() {
-  // Keep both quality columns in sync
   await dbq("ALTER TABLE world_cells ADD COLUMN IF NOT EXISTS living_quality INT", []);
   await dbq("ALTER TABLE world_cells ADD COLUMN IF NOT EXISTS lq INT", []);
-  // Elevation column (some DBs have NOT NULL constraint already)
   await dbq("ALTER TABLE world_cells ADD COLUMN IF NOT EXISTS elev REAL", []);
-
-  // One-time backfill both ways for LQ
   await dbq("UPDATE world_cells SET living_quality = COALESCE(living_quality, lq)", []);
   await dbq("UPDATE world_cells SET lq = COALESCE(lq, living_quality)", []);
-
-  // Backfill elev for any legacy rows (invert the earlier LQ transform: ~ (lq+20)/100)
   await dbq(
     "UPDATE world_cells SET elev = COALESCE(elev, GREATEST(0, LEAST(1, (COALESCE(living_quality,0) + 20) / 100.0)))",
     []
@@ -46,15 +40,22 @@ async function setWorldMeta(seed, width, height) {
   );
 }
 
-async function generateCells(seed, size, force) {
+/**
+ * Procedural world generation
+ */
+async function generateWorld(seed = "kingdom", size = 256, force = false) {
   await ensureWorldCellsColumns();
 
   const existing = await dbq("SELECT COUNT(*)::int AS n FROM world_cells", []);
-  if (existing[0].n > 0 && !force) return;
+  if (existing[0].n > 0 && !force) {
+    console.log("[WORLD] Already populated, skipping.");
+    return;
+  }
 
+  console.log(`[WORLD] Generating ${size}x${size} grid with seed=${seed}...`);
   await dbq("TRUNCATE world_cells RESTART IDENTITY", []);
 
-  // PRNG + simple fbm for an island map
+  // Random generators
   function sfc32(a,b,c,d){return function(){a|=0;b|=0;c|=0;d|=0;var t=(a+b|0)+d|0;d=d+1|0;a=b^b>>>9;b=c+(c<<3)|0;c=(c<<21|c>>>11);c=c+t|0;return (t>>>0)/4294967296;};}
   function strHash(s){let h=2166136261>>>0;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
   const seedInt = strHash(String(seed));
@@ -70,7 +71,7 @@ async function generateCells(seed, size, force) {
       const dx=(x-cx)/w, dy=(y-cy)/h;
       const r=Math.sqrt(dx*dx+dy*dy);
       const island=Math.max(0,1-(r*1.6));
-      const elev=fbm(x,y)*island; // 0..~1
+      const elev=fbm(x,y)*island;
 
       let biome="ocean";
       if (elev>0.03 && elev<=0.08) biome="coast";
@@ -83,18 +84,17 @@ async function generateCells(seed, size, force) {
     }
   }
 
-  // Write elev + both quality columns
   const chunk=2000;
   for(let i=0;i<rows.length;i+=chunk){
     const slice=rows.slice(i,i+chunk);
-    const vals=slice.map((_,k)=>`($${k*6+1},$${k*6+2},$${k*6+3},$${k*6+4},$${k*6+5},$${k*6+6})`).join(",");
-    const flat=[];
-    for (const [x,y,biome,elev,lq] of slice) flat.push(x,y,biome,elev,lq,lq);
-    await dbq(`INSERT INTO world_cells (x,y,biome,elev,living_quality,lq) VALUES ${vals}`, flat);
+    const vals=slice.map((_,k)=>`($${k*5+1},$${k*5+2},$${k*5+3},$${k*5+4},$${k*5+5})`).join(",");
+    const flat=[]; for(const [x,y,b,e,l] of slice) flat.push(x,y,b,e,l);
+    await dbq(`INSERT INTO world_cells (x,y,biome,elev,living_quality) VALUES ${vals}`, flat);
   }
 
   await setWorldMeta(seed,w,h);
   await autoplaceCapital();
+  console.log(`[WORLD] Done: ${w*h} cells generated.`);
 }
 
 async function autoplaceCapital() {
@@ -123,7 +123,7 @@ async function autoplaceCapital() {
       `INSERT INTO rooms
         (name, terrain, living_quality, distance_from_capital, tax_rate, owner_player_id, world_x, world_y,
          price_food, price_meat, price_wood, price_stone, price_bow, price_pickaxe)
-       VALUES ('Capital','plains',0,1,10,NULL,$1,$2, 1,3,1,2,20,25)`,
+       VALUES ('Capital','plains',0,1,10,NULL,$1,$2,1,3,1,2,20,25)`,
       [best.x,best.y]
     );
   } else {
@@ -163,7 +163,6 @@ async function gridCells() {
   return { meta, cells, towns };
 }
 
-// ---- NEW: current player's room position (by username) ----
 async function playerPos(username) {
   if (!username) return { exists:false };
   const r = await dbq(
@@ -188,7 +187,6 @@ async function playerPos(username) {
 }
 
 function initWorldFeature(arg) {
-  // Accept either app or { app }
   const app = (arg && arg.use) ? arg : (arg && arg.app) ? arg.app : null;
   if (!app || typeof app.use !== "function") {
     throw new Error("initWorldFeature(app): expected Express app or { app }");
@@ -208,7 +206,7 @@ function initWorldFeature(arg) {
       const size = Math.max(32, Math.min(512, Number(url.searchParams.get("size") || 256)));
       const force = Number(url.searchParams.get("force") || 0) === 1;
 
-      await generateCells(seed, size, force);
+      await generateWorld(seed, size, force);
       const meta = await worldMeta();
       res.json({ ok:true, meta });
     } catch (e) {
@@ -241,7 +239,6 @@ function initWorldFeature(arg) {
     }
   });
 
-  // NEW: player position by username (map page reads username from localStorage)
   api.get("/playerpos", async (req, res) => {
     try {
       const u = String(req.query.u || req.query.user || "").trim();
@@ -261,9 +258,8 @@ async function regenerateWorldIfEmpty() {
   const count = parseInt(rows[0].count || 0);
   if (count === 0) {
     console.log("[WORLD] Regenerating initial grid...");
-    await generateWorld({ width: 40, height: 40 });
+    await generateWorld("kingdom", 40, true);
   }
 }
 
 module.exports = { initWorldFeature, generateWorld, regenerateWorldIfEmpty };
-
