@@ -30,8 +30,6 @@ function costForQuality(q) {
 }
 
 function initInventoryFeature(_registry) {
-  // --- existing tool commands remain intact ---
-  const { giveTool, useTool, countTool, TOOL } = require("./inventory_tools_fallback") || {};
 
   // /forge weapon|armor [quality]
   register("/forge", async (ctx, socket, parts) => {
