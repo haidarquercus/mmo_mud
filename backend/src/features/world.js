@@ -256,4 +256,14 @@ function initWorldFeature(arg) {
   app.use("/api/world", api);
 }
 
-module.exports = { initWorldFeature };
+async function regenerateWorldIfEmpty() {
+  const rows = await dbq("SELECT COUNT(*) FROM world_cells", []);
+  const count = parseInt(rows[0].count || 0);
+  if (count === 0) {
+    console.log("[WORLD] Regenerating initial grid...");
+    await generateWorld({ width: 40, height: 40 });
+  }
+}
+
+module.exports = { initWorldFeature, generateWorld, regenerateWorldIfEmpty };
+

@@ -8,6 +8,18 @@ const { dbq } = require("./src/db");
 const { register, dispatch } = require("./src/core/commands");
 const util = require("./src/core/util");
 const playerCore = require("./src/core/player");
+const { regenerateWorldIfEmpty } = require("./src/features/world");
+
+(async () => {
+  try {
+    await regenerateWorldIfEmpty();
+    console.log("[BOOT] Verified world grid present.");
+  } catch (e) {
+    console.error("[BOOT] World bootstrap failed:", e);
+  }
+})();
+
+
 
 // ---- optional middlewares (won’t crash if not installed)
 function optRequire(name) {
