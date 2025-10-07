@@ -212,6 +212,8 @@ io.on("connection", async (socket) => {
       readCookie("kmmoToken") ||
       null;
 
+    console.log(`[CONNECT] New socket ${socket.id}, token=${token || "none"}`); // ✅ PATCH
+
     let me = token ? await playerCore.findByToken(token) : null;
 
     // Fast path for returning users
@@ -229,22 +231,35 @@ io.on("connection", async (socket) => {
       socket.disconnect(true);
     }, 30000);
 
+    // ✅ PATCH: duplicate-safe username creation
     socket.once("chat", async (name) => {
       clearTimeout(timeout);
       name = String(name || "").trim();
+
       if (!/^[A-Za-z][A-Za-z0-9 _-]{1,11}$/.test(name)) {
         util.you(socket, "Invalid name. Use 2–12 chars, start with a letter.");
-        socket.disconnect(true);
         return;
       }
 
       const newToken = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
-      const player = await playerCore.createWithName({
-        socketId: socket.id,
-        token: newToken,
-        username: name
-      });
-      proceed(player);
+
+      try {
+        const player = await playerCore.createWithName({
+          socketId: socket.id,
+          token: newToken,
+          username: name,
+        });
+        proceed(player);
+      } catch (err) {
+        if (err.code === "23505" && /players_username_key/i.test(err.detail || "")) {
+          console.warn(`[PLAYER] Username '${name}' already exists.`);
+          util.you(socket, "That name is already taken. Please choose another name.");
+          return;
+        }
+
+        console.error("Error creating player:", err);
+        util.you(socket, "Server error while creating your character. Please try again.");
+      }
     });
 
     async function proceed(player) {
@@ -276,7 +291,7 @@ io.on("connection", async (socket) => {
 });
 
 // --------------------------------------------------------------
-// Health route for Render/Netlify
+// Health route
 // --------------------------------------------------------------
 app.get("/healthz", (req, res) => res.json({ ok: true }));
 

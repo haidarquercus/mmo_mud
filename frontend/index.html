@@ -71,7 +71,6 @@
         <div class="title">Commands</div>
         <div class="commands">
           <div><code>/help</code></div>
-
           <div style="margin-top:6px;">— Core —</div>
           <div><code>/stats</code> · <code>/status</code> · <code>/who</code> · <code>/bounties</code></div>
           <div><code>/w Name msg</code> · <code>/pay Name amount</code> · <code>/give Name fruit|meat|wood|stone qty</code></div>
@@ -106,7 +105,7 @@
         <div class="commands">
           <label><input type="checkbox" id="f-chat" checked/> Show chat</label><br/>
           <label><input type="checkbox" id="f-system" checked/> Show system</label><br/>
-          <label><input type="checkbox" id="f-others" /> Show others’ routine actions</label>
+          <label><input type="checkbox" id="f-others"/> Show others’ routine actions</label>
         </div>
       </div>
     </aside>
@@ -122,7 +121,9 @@
   </div>
 
   <script>
-    // ---- Persistent token management ----
+    // -------------------------------
+    // Token Persistence & Recovery
+    // -------------------------------
     window.__KM_TOKEN__ = localStorage.getItem("kmmoToken") || null;
 
     function setKmmoToken(t) {
@@ -132,17 +133,18 @@
       window.__KM_TOKEN__ = t;
     }
 
-    // Connect with stored token if available
+    // --- Safe reconnect / reuse across tabs & map ---
+    (function syncCookie(){
+      const t = localStorage.getItem("kmmoToken");
+      if (t) document.cookie = `kmmoToken=${encodeURIComponent(t)}; path=/; max-age=31536000; SameSite=Lax`;
+    })();
+
     const ioSock = io({ auth: { token: window.__KM_TOKEN__ } });
 
     const $ = sel => document.querySelector(sel);
-    const consoleEl = $("#console");
-    const input = $("#input");
-    const sendBtn = $("#send");
-    const helpBtn = $("#help");
-    const roomEl = $("#roomName");
-    const userEl = $("#username");
-    const badgeEl = $("#badges");
+    const consoleEl = $("#console"), input = $("#input");
+    const sendBtn = $("#send"), helpBtn = $("#help");
+    const roomEl = $("#roomName"), userEl = $("#username"), badgeEl = $("#badges");
 
     const stat = {
       gold: $("#stat-gold"),
@@ -154,7 +156,8 @@
     };
 
     const fChat = $("#f-chat"), fSystem = $("#f-system"), fOthers = $("#f-others");
-    let myName = ""; const muted = new Set();
+    let myName = "";
+    const muted = new Set();
 
     function ts(){ const d=new Date(); return d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"}); }
     function escapeHtml(s){ return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -177,33 +180,50 @@
       line(msg,"system");
     });
 
-    // ✅ Enhanced "you" handler for duplicate name handling
+    // -------------------------------
+    // Friendly Duplicate Name Flow
+    // -------------------------------
     ioSock.on("you", msg=>{
       line(msg,"you");
       if (/already taken/i.test(msg)) {
-        const newName = prompt("That name is already taken. Please choose another name:");
-        if (newName && newName.trim()) {
-          ioSock.emit("command", `/name ${newName.trim()}`);
-        } else {
-          alert("You must enter a valid name to continue.");
-        }
+        const newName = prompt("That name is already taken. Please choose another:");
+        if (newName && newName.trim()) ioSock.emit("chat", newName.trim());
+        else alert("You must enter a valid name to continue.");
+      } else if (/choose your name/i.test(msg)) {
+        const chosen = prompt("Enter your character name (2–12 chars):");
+        if (chosen && chosen.trim()) ioSock.emit("chat", chosen.trim());
       }
     });
 
+    // -------------------------------
+    // State Sync from Server
+    // -------------------------------
     ioSock.on("state", s=>{
       if(s.token && s.token!==window.__KM_TOKEN__) setKmmoToken(s.token);
       if(s.username){ myName=s.username; try{ localStorage.setItem("mud_user",s.username);}catch{} }
-      roomEl.textContent=`Room: ${s.room}`; userEl.textContent=`User: ${s.username}`;
-      stat.gold.textContent=s.gold??0; stat.food.textContent=s.food??0; stat.meat.textContent=s.meat??0;
-      stat.wood.textContent=s.wood??0; stat.stone.textContent=s.stone??0;
+      roomEl.textContent=`Room: ${s.room}`;
+      userEl.textContent=`User: ${s.username}`;
+      stat.gold.textContent=s.gold??0;
+      stat.food.textContent=s.food??0;
+      stat.meat.textContent=s.meat??0;
+      stat.wood.textContent=s.wood??0;
+      stat.stone.textContent=s.stone??0;
       stat.hunger.style.width=`${Math.max(0,Math.min(100,s.hunger??100))}%`;
       badgeEl.innerHTML="";
       if(s.role&&s.role!=="Peasant") addBadge(s.role,"blue");
       if(s.wanted) addBadge("WANTED","red");
     });
 
-    function addBadge(text,color){ const b=document.createElement("div"); b.className="badge "+(color||""); b.textContent=text; badgeEl.appendChild(b); }
+    function addBadge(text,color){
+      const b=document.createElement("div");
+      b.className="badge "+(color||"");
+      b.textContent=text;
+      badgeEl.appendChild(b);
+    }
 
+    // -------------------------------
+    // Input Handling
+    // -------------------------------
     const history=[]; let hIdx=-1;
     function handleLocalClientCommands(val){
       if(val.startsWith("/mute ")){ const n=val.slice(6).trim(); if(n){muted.add(n); line(`Muted ${n}`,"you");} return true; }
@@ -212,18 +232,29 @@
     }
 
     function send(){
-      const val=input.value.trim(); if(!val) return;
+      const val=input.value.trim();
+      if(!val) return;
       if(handleLocalClientCommands(val)){ input.value=""; return; }
       history.unshift(val); hIdx=-1;
-      if(val.startsWith("/")) ioSock.emit("command", val); else ioSock.emit("chat", val);
+      if(val.startsWith("/")) ioSock.emit("command", val);
+      else ioSock.emit("chat", val);
       input.value="";
     }
 
-    sendBtn.onclick=send; helpBtn.onclick=()=>{ input.value="/help"; send(); };
+    sendBtn.onclick=send;
+    helpBtn.onclick=()=>{ input.value="/help"; send(); };
+
     input.addEventListener("keydown",e=>{
       if(e.key==="Enter") return send();
-      if(e.key==="ArrowUp"){ if(history[hIdx+1]){hIdx++;input.value=history[hIdx];input.setSelectionRange(input.value.length,input.value.length);} e.preventDefault(); }
-      if(e.key==="ArrowDown"){ if(hIdx>0){hIdx--;input.value=history[hIdx];} else {hIdx=-1;input.value="";} e.preventDefault(); }
+      if(e.key==="ArrowUp"){
+        if(history[hIdx+1]){hIdx++;input.value=history[hIdx];input.setSelectionRange(input.value.length,input.value.length);}
+        e.preventDefault();
+      }
+      if(e.key==="ArrowDown"){
+        if(hIdx>0){hIdx--;input.value=history[hIdx];}
+        else {hIdx=-1;input.value="";}
+        e.preventDefault();
+      }
       if(e.ctrlKey && e.key.toLowerCase()==="l"){ consoleEl.innerHTML=""; e.preventDefault(); }
     });
   </script>
