@@ -28,7 +28,7 @@
   }
   </script>
 
-  <!-- ✅ Hidden SEO text (bots read it, users don't) -->
+  <!-- ✅ Hidden SEO text -->
   <style>.seo-summary{display:none;}</style>
 </head>
 <body>
@@ -177,7 +177,18 @@
       line(msg,"system");
     });
 
-    ioSock.on("you", msg=>line(msg,"you"));
+    // ✅ Enhanced "you" handler for duplicate name handling
+    ioSock.on("you", msg=>{
+      line(msg,"you");
+      if (/already taken/i.test(msg)) {
+        const newName = prompt("That name is already taken. Please choose another name:");
+        if (newName && newName.trim()) {
+          ioSock.emit("command", `/name ${newName.trim()}`);
+        } else {
+          alert("You must enter a valid name to continue.");
+        }
+      }
+    });
 
     ioSock.on("state", s=>{
       if(s.token && s.token!==window.__KM_TOKEN__) setKmmoToken(s.token);
@@ -216,7 +227,5 @@
       if(e.ctrlKey && e.key.toLowerCase()==="l"){ consoleEl.innerHTML=""; e.preventDefault(); }
     });
   </script>
-
-
 </body>
 </html>

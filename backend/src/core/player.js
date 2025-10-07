@@ -1,4 +1,3 @@
-// src/core/player.js
 const crypto = require("crypto");
 const { dbq } = require("../db");
 
@@ -14,11 +13,11 @@ async function ensureIdentityColumns() {
 // --- small helpers ---
 function normalizeToken(t) {
   if (!t) return null;
-  // Trim & clamp to a sane size to avoid pathological input
   t = String(t).trim();
   if (t.length > 128) t = t.slice(0, 128);
   return t;
 }
+
 async function bumpSeen(playerId) {
   await dbq("UPDATE players SET last_seen=NOW() WHERE id=$1", [playerId]);
 }
@@ -29,36 +28,35 @@ async function findByToken(token) {
   return r[0] || null;
 }
 
-async function createWithName({ socketId, token, username }) {
-  const r = await dbq(
-    `INSERT INTO players (socket_id, token, username, room, role)
-     VALUES ($1, $2, $3, 'Capital', 'Peasant')
-     RETURNING *`,
-    [socketId, token, username]
-  );
-  return r[0];
+/**
+ * Create a new player with a chosen name.
+ * Gracefully handles duplicate username errors without crashing.
+ */
+async function createWithName({ socketId, token, username, ctx }) {
+  try {
+    const r = await dbq(
+      `INSERT INTO players (socket_id, token, username, room, role)
+       VALUES ($1, $2, $3, 'Capital', 'Peasant')
+       RETURNING *`,
+      [socketId, token, username]
+    );
+    return r[0];
+  } catch (e) {
+    if (e.code === "23505" && e.detail && e.detail.includes("username")) {
+      console.warn(`[PLAYER] Username '${username}' already exists.`);
+      if (ctx && ctx.you) ctx.you(socketId, `The name '${username}' is already taken. Please choose another.`);
+      return null;
+    }
+    throw e;
+  }
 }
-
 
 // --- queries / helpers ---
 async function loadBySocket(socketId) {
   const r = await dbq("SELECT * FROM players WHERE socket_id=$1", [socketId]);
   return r[0] || null;
 }
-async function findByToken(token) {
-  const r = await dbq("SELECT * FROM players WHERE token=$1", [token]);
-  return r[0] || null;
-}
 
-/**
- * Sticky identity: attach by token if present; otherwise create a new player
- * with a fresh token. Always sets socket_id and bumps last_seen.
- *
- * @param {Object} arg
- * @param {string} arg.socketId - current socket id
- * @param {string|null} arg.token - optional persisted token from client
- * @returns {Promise<object>} player row
- */
 async function ensureByTokenOrCreate({ socketId, token }) {
   await ensureIdentityColumns();
 
@@ -104,14 +102,11 @@ async function ensureByTokenOrCreate({ socketId, token }) {
       throw e;
     }
   }
+
   if (!row) throw new Error("Failed to create player");
   return row;
 }
 
-/**
- * DEPRECATED: was upserting by username (caused identity collisions).
- * Kept for backward compatibility, but now creates a fresh player with its own token.
- */
 async function ensureForSocket(socketId, usernameHint) {
   await ensureIdentityColumns();
   const token = crypto.randomBytes(16).toString("hex");
@@ -150,15 +145,13 @@ async function respawnAsPeasant(playerId) {
   );
 }
 
-
 module.exports = {
   loadBySocket,
   findByToken,
   ensureByTokenOrCreate,
   ensureForSocket, // legacy
   respawnAsPeasant,
-  findByToken,
   createWithName,
-  bumpSeen,        // NEW: optional convenience
-  ensureIdentityColumns, // export if migrations run from elsewhere
+  bumpSeen,
+  ensureIdentityColumns,
 };
