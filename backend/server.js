@@ -194,15 +194,16 @@ setInterval(() => {
 }, 30000);
 
 // --------------------------------------------------------------
-// Connection logic with proper token reattach and name prompt
+// Connection logic with name gate (fixed reattach + prompt)
 // --------------------------------------------------------------
 io.on("connection", async (socket) => {
   try {
     const cookieHeader = socket.handshake?.headers?.cookie || "";
     const readCookie = (name) => {
-      const parts = cookieHeader.split(";").map(s => s.trim());
+      const parts = cookieHeader.split(";").map((s) => s.trim());
       const prefix = name + "=";
-      for (const p of parts) if (p.startsWith(prefix)) return decodeURIComponent(p.slice(prefix.length));
+      for (const p of parts)
+        if (p.startsWith(prefix)) return decodeURIComponent(p.slice(prefix.length));
       return null;
     };
 
@@ -214,15 +215,18 @@ io.on("connection", async (socket) => {
 
     let me = token ? await playerCore.findByToken(token) : null;
 
-    // ✅ If we already have a player with this token — reattach session
+    // --- Fast path for returning players
     if (me) {
-      await dbq("UPDATE players SET socket_id=$1, last_seen=NOW() WHERE id=$2", [socket.id, me.id]);
-      console.log(`[LOGIN] Reattached existing player: ${me.username}`);
+      await dbq("UPDATE players SET socket_id=$1, last_seen=NOW() WHERE id=$2", [
+        socket.id,
+        me.id,
+      ]);
+      me = (await dbq("SELECT * FROM players WHERE id=$1", [me.id]))[0];
       return proceed(me);
     }
 
-    // ✅ Otherwise prompt for name (new user)
-    util.you(socket, "Enter your character name (2–12 chars):");
+    // --- New player flow
+    util.you(socket, "Welcome, traveler. Choose your name (2–12 chars, start with a letter):");
 
     const timeout = setTimeout(() => {
       util.you(socket, "Session timed out — please reconnect.");
@@ -232,43 +236,44 @@ io.on("connection", async (socket) => {
     socket.once("chat", async (name) => {
       clearTimeout(timeout);
       name = String(name || "").trim();
-
       if (!/^[A-Za-z][A-Za-z0-9 _-]{1,11}$/.test(name)) {
         util.you(socket, "Invalid name. Use 2–12 chars, start with a letter.");
         socket.disconnect(true);
         return;
       }
 
-      // Check if username is already taken
-      const exists = await dbq("SELECT 1 FROM players WHERE LOWER(username)=LOWER($1)", [name]);
-      if (exists.length > 0) {
-        util.you(socket, "That name is already taken. Please try another.");
+      try {
+        const newToken = crypto.randomUUID
+          ? crypto.randomUUID()
+          : crypto.randomBytes(16).toString("hex");
+
+        const player = await playerCore.createWithName({
+          socketId: socket.id,
+          token: newToken,
+          username: name,
+        });
+
+        proceed(player);
+      } catch (e) {
+        if (e.code === "23505") {
+          util.you(socket, "That name is already taken. Please refresh and try another.");
+        } else {
+          console.error("Player creation error:", e);
+          util.you(socket, "Server error creating player.");
+        }
         socket.disconnect(true);
-        return;
       }
-
-      const newToken = crypto.randomBytes(16).toString("hex");
-      const player = await playerCore.createWithName({
-        socketId: socket.id,
-        token: newToken,
-        username: name
-      });
-
-      console.log(`[CREATE] New player created: ${name}`);
-      proceed(player);
     });
 
-    // ✅ Shared game entry point
+    // --- Proceed when player is ready
     async function proceed(player) {
       const roomRow = await util.ensureRoom(player.room || "Capital");
-
-      await dbq("UPDATE players SET room=$1, socket_id=$2, last_seen=NOW() WHERE id=$3",
-        [roomRow.name, socket.id, player.id]);
+      if (player.room !== roomRow.name) {
+        await dbq("UPDATE players SET room=$1 WHERE id=$2", [roomRow.name, player.id]);
+      }
 
       socket.join(roomRow.name);
       util.sys(io, roomRow.name, `${player.username} entered ${roomRow.name}`);
-
-      // ✅ Send state (includes token for persistence)
       util.sendState(socket, { ...player, room: roomRow.name, token: player.token });
 
       socket.on("chat", (msg) => io.to(roomRow.name).emit("chat", `${player.username}: ${msg}`));
@@ -292,40 +297,14 @@ io.on("connection", async (socket) => {
     }
   } catch (e) {
     console.error("Connection error:", e);
-    try { util.you(socket, "Server error on connect."); } catch {}
+    try {
+      util.you(socket, "Server error on connect.");
+    } catch {}
   }
-});
-
-    async function proceed(player) {
-      const roomRow = await util.ensureRoom(player.room || "Capital");
-      if (player.room !== roomRow.name)
-        await dbq("UPDATE players SET room=$1 WHERE id=$2", [roomRow.name, player.id]);
-
-      socket.join(roomRow.name);
-      util.sys(io, roomRow.name, `${player.username} entered ${roomRow.name}`);
-      util.sendState(socket, { ...player, room: roomRow.name, token: player.token });
-
-      socket.on("chat", (msg) => io.to(roomRow.name).emit("chat", `${player.username}: ${msg}`));
-
-      socket.on("command", async (raw) => {
-        const t0 = Date.now();
-        try { await dispatch(ctx, socket, raw); record(Date.now() - t0, true); }
-        catch (e) { console.error("CMD", e); util.you(socket, "Command failed."); record(Date.now() - t0, false); }
-      });
-
-      socket.on("disconnect", async () => {
-        await dbq("UPDATE players SET socket_id=NULL, last_seen=NOW() WHERE id=$1", [player.id]);
-        util.sys(io, roomRow.name, `${player.username} disconnected.`);
-      });
-    }
-  } catch (e) {
-    console.error("Connection error:", e);
-    try { util.you(socket, "Server error on connect."); } catch {}
-  }
-});
+}); // ✅ this closes io.on properly
 
 // --------------------------------------------------------------
-// Health route
+// Health route for Render/Netlify
 // --------------------------------------------------------------
 app.get("/healthz", (req, res) => res.json({ ok: true }));
 
