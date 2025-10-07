@@ -193,25 +193,46 @@ setInterval(() => {
 // --------------------------------------------------------------
 // Connection Logic — unified token & reattach flow
 // --------------------------------------------------------------
+
 io.on("connection", async (socket) => {
   try {
     const cookieHeader = socket.handshake?.headers?.cookie || "";
-    const match = cookieHeader.match(/kmmoToken=([^;]+)/);
+    const readCookie = (name) => {
+      const parts = cookieHeader.split(";").map(s => s.trim());
+      const prefix = name + "=";
+      for (const q of parts) if (q.startsWith(prefix)) return decodeURIComponent(q.slice(prefix.length));
+      return null;
+    };
+
     const token =
       socket.handshake?.auth?.token ||
       socket.handshake?.query?.token ||
-      (match ? decodeURIComponent(match[1]) : null);
+      readCookie("kmmoToken") ||
+      null;
 
     let me = token ? await playerCore.findByToken(token) : null;
 
-    // --- Fast reattach for returning players
+    // ✅ If token exists but player was wiped, recreate silently with same token
+    if (!me && token) {
+      console.warn("[session] Token exists but no player found. Rebuilding...");
+      const username = "U-" + token.slice(-6);
+      me = await dbq(
+        `INSERT INTO players (username, token, room, role, gold, food, meat, wood, stone, hunger, wanted, socket_id, last_seen)
+         VALUES ($1,$2,'Capital','Peasant',0,0,0,0,0,100,false,$3,NOW())
+         ON CONFLICT (token) DO UPDATE SET socket_id=$3, last_seen=NOW()
+         RETURNING *`,
+        [username, token, socket.id]
+      ).then(r => r[0]);
+    }
+
+    // ✅ Reattach returning player immediately
     if (me) {
       await dbq("UPDATE players SET socket_id=$1, last_seen=NOW() WHERE id=$2", [socket.id, me.id]);
-      me = (await dbq("SELECT * FROM players WHERE id=$1", [me.id]))[0];
+      console.log(`[session] Reattached ${me.username} (${me.id})`);
       return proceed(me);
     }
 
-    // --- New player flow
+    // --- Otherwise new player flow
     util.you(socket, "Welcome, traveler. Choose your name (2–12 chars, start with a letter):");
 
     const timeout = setTimeout(() => {
@@ -222,7 +243,6 @@ io.on("connection", async (socket) => {
     socket.once("chat", async (name) => {
       clearTimeout(timeout);
       name = String(name || "").trim();
-
       if (!/^[A-Za-z][A-Za-z0-9 _-]{1,11}$/.test(name)) {
         util.you(socket, "Invalid name. Use 2–12 chars, start with a letter.");
         socket.disconnect(true);
@@ -230,7 +250,7 @@ io.on("connection", async (socket) => {
       }
 
       try {
-        const newToken = crypto.randomUUID?.() || crypto.randomBytes(16).toString("hex");
+        const newToken = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString("hex");
         const player = await playerCore.createWithName({
           socketId: socket.id,
           token: newToken,
@@ -238,9 +258,8 @@ io.on("connection", async (socket) => {
         });
         proceed(player);
       } catch (e) {
-        if (e.code === "23505") {
-          util.you(socket, "That name is already taken. Please refresh and choose another.");
-        } else {
+        if (e.code === "23505") util.you(socket, "That name is already taken. Please refresh and try another.");
+        else {
           console.error("Player creation error:", e);
           util.you(socket, "Server error creating player.");
         }
@@ -248,33 +267,21 @@ io.on("connection", async (socket) => {
       }
     });
 
-    // --- Proceed with connected player
     async function proceed(player) {
       const roomRow = await util.ensureRoom(player.room || "Capital");
-      if (player.room !== roomRow.name) {
+      if (player.room !== roomRow.name)
         await dbq("UPDATE players SET room=$1 WHERE id=$2", [roomRow.name, player.id]);
-      }
 
       socket.join(roomRow.name);
       util.sys(io, roomRow.name, `${player.username} entered ${roomRow.name}`);
       util.sendState(socket, { ...player, room: roomRow.name, token: player.token });
 
-      socket.on("chat", (msg) =>
-        io.to(roomRow.name).emit("chat", `${player.username}: ${msg}`)
-      );
-
+      socket.on("chat", (msg) => io.to(roomRow.name).emit("chat", `${player.username}: ${msg}`));
       socket.on("command", async (raw) => {
         const t0 = Date.now();
-        try {
-          await dispatch(ctx, socket, raw);
-          record(Date.now() - t0, true);
-        } catch (e) {
-          console.error("CMD", e);
-          util.you(socket, "Command failed.");
-          record(Date.now() - t0, false);
-        }
+        try { await dispatch(ctx, socket, raw); record(Date.now() - t0, true); }
+        catch (e) { console.error("CMD", e); util.you(socket, "Command failed."); record(Date.now() - t0, false); }
       });
-
       socket.on("disconnect", async () => {
         await dbq("UPDATE players SET socket_id=NULL, last_seen=NOW() WHERE id=$1", [player.id]);
         util.sys(io, roomRow.name, `${player.username} disconnected.`);
@@ -285,6 +292,7 @@ io.on("connection", async (socket) => {
     try { util.you(socket, "Server error on connect."); } catch {}
   }
 });
+
 
 // --------------------------------------------------------------
 // Health check
