@@ -121,9 +121,9 @@
   </div>
 
   <script>
-    // -------------------------------
-    // Token Persistence & Recovery
-    // -------------------------------
+    // ---------------------------------------------------------
+    // 🔒 Persistent identity sync for token + username
+    // ---------------------------------------------------------
     window.__KM_TOKEN__ = localStorage.getItem("kmmoToken") || null;
 
     function setKmmoToken(t) {
@@ -133,10 +133,12 @@
       window.__KM_TOKEN__ = t;
     }
 
-    // --- Safe reconnect / reuse across tabs & map ---
-    (function syncCookie(){
+    // --- Keep both token + username in sync with cookies
+    (function ensureIdentityCookies() {
       const t = localStorage.getItem("kmmoToken");
+      const u = localStorage.getItem("mud_user");
       if (t) document.cookie = `kmmoToken=${encodeURIComponent(t)}; path=/; max-age=31536000; SameSite=Lax`;
+      if (u) document.cookie = `mud_user=${encodeURIComponent(u)}; path=/; max-age=31536000; SameSite=Lax`;
     })();
 
     const ioSock = io({ auth: { token: window.__KM_TOKEN__ } });
@@ -180,9 +182,9 @@
       line(msg,"system");
     });
 
-    // -------------------------------
-    // Friendly Duplicate Name Flow
-    // -------------------------------
+    // ---------------------------------------------------------
+    // Duplicate name / new player creation flow
+    // ---------------------------------------------------------
     ioSock.on("you", msg=>{
       line(msg,"you");
       if (/already taken/i.test(msg)) {
@@ -195,12 +197,18 @@
       }
     });
 
-    // -------------------------------
-    // State Sync from Server
-    // -------------------------------
+    // ---------------------------------------------------------
+    // Server state → client sync
+    // ---------------------------------------------------------
     ioSock.on("state", s=>{
       if(s.token && s.token!==window.__KM_TOKEN__) setKmmoToken(s.token);
-      if(s.username){ myName=s.username; try{ localStorage.setItem("mud_user",s.username);}catch{} }
+      if(s.username){
+        myName=s.username;
+        try{
+          localStorage.setItem("mud_user",s.username);
+          document.cookie=`mud_user=${encodeURIComponent(s.username)}; path=/; max-age=31536000; SameSite=Lax`;
+        }catch(e){console.warn("user save failed",e);}
+      }
       roomEl.textContent=`Room: ${s.room}`;
       userEl.textContent=`User: ${s.username}`;
       stat.gold.textContent=s.gold??0;
@@ -221,9 +229,9 @@
       badgeEl.appendChild(b);
     }
 
-    // -------------------------------
+    // ---------------------------------------------------------
     // Input Handling
-    // -------------------------------
+    // ---------------------------------------------------------
     const history=[]; let hIdx=-1;
     function handleLocalClientCommands(val){
       if(val.startsWith("/mute ")){ const n=val.slice(6).trim(); if(n){muted.add(n); line(`Muted ${n}`,"you");} return true; }
