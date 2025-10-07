@@ -7,14 +7,15 @@ const { Server } = require("socket.io");
 const { dbq } = require("./src/db");
 const { register, dispatch } = require("./src/core/commands");
 const util = require("./src/core/util");
+const playerCore = require("./src/core/player");
 
 // ---- optional middlewares (won’t crash if not installed)
 function optRequire(name) {
   try { return require(name); }
   catch { console.warn(`[opt] ${name} not installed — continuing without it`); return null; }
 }
-const compression = optRequire("compression"); // npm i compression
-const helmet = optRequire("helmet");           // npm i helmet (optional security)
+const compression = optRequire("compression");
+const helmet = optRequire("helmet");
 
 // --- Features (status shim) ---
 const statusFeature = require("./src/features/status");
@@ -75,7 +76,7 @@ const ctx = {
   },
   respawn: require("./src/core/player").respawnAsPeasant,
 };
-ctx.sys.bind(null); // silence linter
+ctx.sys.bind(null);
 
 // --------------------------------------------------------------
 // Dev helpers
@@ -90,48 +91,25 @@ async function devCleanupOrphans() {
 }
 
 // --------------------------------------------------------------
-// Dev reset (wipe everything but world)
+// Optional dev reset (wipe world except Capital)
 // --------------------------------------------------------------
 async function devResetEverythingButWorld() {
-  console.log("[DEV_RESET] wiping players/settlements/markets/jobs; keeping world grid…");
-
+  console.log("[DEV_RESET] wiping all players/settlements/jobs; keeping Capital...");
   async function hasTable(qualified) {
     const r = await dbq("SELECT to_regclass($1) AS r", [qualified]);
     return !!r[0]?.r;
   }
-
   await dbq("BEGIN", []);
   try {
     await dbq("SET CONSTRAINTS ALL DEFERRED", []);
-
     const tables = [
       "world_jobs", "jobs", "market_makers", "room_stock", "homes", "players"
     ];
-    for (const t of tables) {
+    for (const t of tables)
       if (await hasTable(`public.${t}`)) await dbq(`DELETE FROM public.${t}`, []);
-    }
 
-    if (await hasTable("public.rooms")) {
+    if (await hasTable("public.rooms"))
       await dbq("DELETE FROM public.rooms WHERE name <> 'Capital'", []);
-    }
-
-    const seqs = [
-      "world_jobs_id_seq", "jobs_id_seq", "market_makers_id_seq",
-      "room_stock_id_seq", "homes_id_seq", "players_id_seq"
-    ];
-    for (const s of seqs) {
-      if (await hasTable(`public.${s}`)) await dbq(`ALTER SEQUENCE IF EXISTS ${s} RESTART WITH 1`, []);
-    }
-
-    const cap = await dbq("SELECT 1 FROM rooms WHERE name='Capital' LIMIT 1", []);
-    if (!cap.length) {
-      await dbq(
-        `INSERT INTO rooms
-         (name, terrain, living_quality, distance_from_capital, tax_rate, owner_player_id,
-          world_x, world_y, price_food, price_meat, price_wood, price_stone, price_bow, price_pickaxe)
-         VALUES ('Capital','plains',0,1,10,NULL,NULL,NULL,1,3,1,2,20,25)`, []
-      );
-    }
 
     await dbq("COMMIT", []);
   } catch (e) {
@@ -140,11 +118,8 @@ async function devResetEverythingButWorld() {
   }
 }
 
-// Run light cleanup every boot; only reset when asked
 devCleanupOrphans();
-if (process.env.DEV_RESET === "1") {
-  devResetEverythingButWorld().catch(console.error);
-}
+if (process.env.DEV_RESET === "1") devResetEverythingButWorld().catch(console.error);
 
 // --------------------------------------------------------------
 // Register features
@@ -176,15 +151,20 @@ function record(ms, ok = true) {
   METRICS.cmds++; if (!ok) METRICS.errs++; METRICS.times.push(ms);
   if (METRICS.times.length > 5000) METRICS.times.shift();
 }
-function p95(a){ if(!a.length) return 0; const b=[...a].sort((x,y)=>x-y); const i=Math.max(0,Math.floor(b.length*0.95)-1); return b[i]??b[b.length-1]; }
-setInterval(()=> {
-  const mem=(process.memoryUsage().rss/1024/1024)|0;
+function p95(a) {
+  if (!a.length) return 0;
+  const b = [...a].sort((x, y) => x - y);
+  const i = Math.max(0, Math.floor(b.length * 0.95) - 1);
+  return b[i] ?? b[b.length - 1];
+}
+setInterval(() => {
+  const mem = (process.memoryUsage().rss / 1024 / 1024) | 0;
   console.log(`[HEALTH] players=${io.engine.clientsCount} cmds=${METRICS.cmds} errs=${METRICS.errs} p95ms=${p95(METRICS.times)} rssMB=${mem}`);
-  METRICS={cmds:0,errs:0,times:[]};
+  METRICS = { cmds: 0, errs: 0, times: [] };
 }, 30000);
 
 // --------------------------------------------------------------
-// Wire connection (Socket.IO)
+// Connection logic with name gate
 // --------------------------------------------------------------
 io.on("connection", async (socket) => {
   try {
@@ -202,27 +182,53 @@ io.on("connection", async (socket) => {
       readCookie("kmmoToken") ||
       null;
 
-    const me = await require("./src/core/player").ensureByTokenOrCreate({ socketId: socket.id, token });
+    let me = await playerCore.findByToken?.(token);
+    if (!me) {
+      // Ask for name
+      socket.emit("sys", "Welcome, traveler. Choose your name (max 12 chars):");
+      const nameTimer = setTimeout(() => {
+        socket.emit("sys", "Session timed out — please reconnect.");
+        socket.disconnect(true);
+      }, 30000);
 
-    const roomRow = await util.ensureRoom(me.room || "Capital");
-    if (me.room !== roomRow.name) await dbq("UPDATE players SET room=$1 WHERE id=$2", [roomRow.name, me.id]);
-    socket.join(roomRow.name);
+      socket.once("chat", async (name) => {
+        if (!name || name.length > 12) {
+          socket.emit("sys", "Invalid name length.");
+          socket.disconnect(true);
+          return;
+        }
+        clearTimeout(nameTimer);
+        const uuid = util.uuid();
+        me = await playerCore.createWithName({ socketId: socket.id, token: uuid, username: name });
+        proceed(me);
+      });
+      return;
+    }
 
-    util.sys(io, roomRow.name, `${me.username} entered ${roomRow.name}`);
-    util.sendState(socket, { ...me, room: roomRow.name, token: me.token });
+    proceed(me);
 
-    socket.on("chat", (msg) => io.to(roomRow.name).emit("chat", `${me.username}: ${msg}`));
+    async function proceed(player) {
+      const roomRow = await util.ensureRoom(player.room || "Capital");
+      if (player.room !== roomRow.name)
+        await dbq("UPDATE players SET room=$1 WHERE id=$2", [roomRow.name, player.id]);
+      socket.join(roomRow.name);
 
-    socket.on("command", async (raw) => {
-      const t0 = Date.now();
-      try { await dispatch(ctx, socket, raw); record(Date.now()-t0, true); }
-      catch (e) { console.error("CMD", e); util.you(socket, "Command failed."); record(Date.now()-t0, false); }
-    });
+      util.sys(io, roomRow.name, `${player.username} entered ${roomRow.name}`);
+      util.sendState(socket, { ...player, room: roomRow.name, token: player.token });
 
-    socket.on("disconnect", async () => {
-      await dbq("UPDATE players SET socket_id=NULL, last_seen=NOW() WHERE id=$1", [me.id]);
-      util.sys(io, roomRow.name, `${me.username} disconnected.`);
-    });
+      socket.on("chat", (msg) => io.to(roomRow.name).emit("chat", `${player.username}: ${msg}`));
+
+      socket.on("command", async (raw) => {
+        const t0 = Date.now();
+        try { await dispatch(ctx, socket, raw); record(Date.now() - t0, true); }
+        catch (e) { console.error("CMD", e); util.you(socket, "Command failed."); record(Date.now() - t0, false); }
+      });
+
+      socket.on("disconnect", async () => {
+        await dbq("UPDATE players SET socket_id=NULL, last_seen=NOW() WHERE id=$1", [player.id]);
+        util.sys(io, roomRow.name, `${player.username} disconnected.`);
+      });
+    }
   } catch (e) {
     console.error("Connection error:", e);
     try { util.you(socket, "Server error on connect."); } catch {}
@@ -235,11 +241,10 @@ io.on("connection", async (socket) => {
 app.get("/healthz", (req, res) => res.json({ ok: true }));
 
 // --------------------------------------------------------------
-// Listen (single declaration!)
+// Listen
 // --------------------------------------------------------------
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
 server.listen(PORT, HOST, () => {
   console.log(`Game server running on http://${HOST}:${PORT}`);
 });
-

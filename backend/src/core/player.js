@@ -23,6 +23,23 @@ async function bumpSeen(playerId) {
   await dbq("UPDATE players SET last_seen=NOW() WHERE id=$1", [playerId]);
 }
 
+async function findByToken(token) {
+  if (!token) return null;
+  const r = await dbq("SELECT * FROM players WHERE token=$1 LIMIT 1", [token]);
+  return r[0] || null;
+}
+
+async function createWithName({ socketId, token, username }) {
+  const r = await dbq(
+    `INSERT INTO players (socket_id, token, username, room, role)
+     VALUES ($1, $2, $3, 'Capital', 'Peasant')
+     RETURNING *`,
+    [socketId, token, username]
+  );
+  return r[0];
+}
+
+
 // --- queries / helpers ---
 async function loadBySocket(socketId) {
   const r = await dbq("SELECT * FROM players WHERE socket_id=$1", [socketId]);
@@ -129,12 +146,15 @@ async function respawnAsPeasant(playerId) {
   );
 }
 
+
 module.exports = {
   loadBySocket,
   findByToken,
   ensureByTokenOrCreate,
   ensureForSocket, // legacy
   respawnAsPeasant,
+  findByToken,
+  createWithName,
   bumpSeen,        // NEW: optional convenience
   ensureIdentityColumns, // export if migrations run from elsewhere
 };

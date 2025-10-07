@@ -1,0 +1,1447 @@
+********* QUERY **********
+SET statement_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET lock_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET idle_in_transaction_session_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET client_encoding = 'UTF8';
+**************************
+
+SET
+********* QUERY **********
+SET standard_conforming_strings = on;
+**************************
+
+SET
+********* QUERY **********
+SELECT pg_catalog.set_config('search_path', '', false);
+**************************
+
+ set_config 
+------------
+ 
+(1 row)
+
+********* QUERY **********
+SET check_function_bodies = false;
+**************************
+
+SET
+********* QUERY **********
+SET xmloption = content;
+**************************
+
+SET
+********* QUERY **********
+SET client_min_messages = warning;
+**************************
+
+SET
+********* QUERY **********
+SET row_security = off;
+**************************
+
+SET
+********* QUERY **********
+INSERT INTO public.players VALUES (148, NULL, 'U-e0f91e', 'Capital', 0, 0, 0, 0, 1, 'Peasant', true, NULL, NULL, NULL, false, 0, NULL, 0, '5851ee891d384da5900e24bce5e0f91e', NULL, '2025-10-06 12:23:43.197225+01');
+**************************
+
+********* QUERY **********
+SET statement_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET lock_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET idle_in_transaction_session_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET client_encoding = 'UTF8';
+**************************
+
+SET
+********* QUERY **********
+SET standard_conforming_strings = on;
+**************************
+
+SET
+********* QUERY **********
+SELECT pg_catalog.set_config('search_path', '', false);
+**************************
+
+ set_config 
+------------
+ 
+(1 row)
+
+********* QUERY **********
+SET check_function_bodies = false;
+**************************
+
+SET
+********* QUERY **********
+SET xmloption = content;
+**************************
+
+SET
+********* QUERY **********
+SET client_min_messages = warning;
+**************************
+
+SET
+********* QUERY **********
+SET row_security = off;
+**************************
+
+SET
+********* QUERY **********
+CREATE FUNCTION public.prevent_room_rename() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.name IS DISTINCT FROM OLD.name THEN
+    RAISE EXCEPTION 'Room/town names are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+**************************
+
+CREATE FUNCTION
+********* QUERY **********
+ALTER FUNCTION public.prevent_room_rename() OWNER TO postgres;
+**************************
+
+********* QUERY **********
+SET statement_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET lock_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET idle_in_transaction_session_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET client_encoding = 'UTF8';
+**************************
+
+SET
+********* QUERY **********
+SET standard_conforming_strings = on;
+**************************
+
+SET
+********* QUERY **********
+SELECT pg_catalog.set_config('search_path', '', false);
+**************************
+
+ set_config 
+------------
+ 
+(1 row)
+
+********* QUERY **********
+SET check_function_bodies = false;
+**************************
+
+SET
+********* QUERY **********
+SET xmloption = content;
+**************************
+
+SET
+********* QUERY **********
+SET client_min_messages = warning;
+**************************
+
+SET
+********* QUERY **********
+SET row_security = off;
+**************************
+
+SET
+********* QUERY **********
+CREATE FUNCTION public.prevent_room_rename() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.name IS DISTINCT FROM OLD.name THEN
+    RAISE EXCEPTION 'Room/town names are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+**************************
+
+********* QUERY **********
+SET statement_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET lock_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET idle_in_transaction_session_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET client_encoding = 'UTF8';
+**************************
+
+SET
+********* QUERY **********
+SET standard_conforming_strings = on;
+**************************
+
+SET
+********* QUERY **********
+SELECT pg_catalog.set_config('search_path', '', false);
+**************************
+
+ set_config 
+------------
+ 
+(1 row)
+
+********* QUERY **********
+SET check_function_bodies = false;
+**************************
+
+SET
+********* QUERY **********
+SET xmloption = content;
+**************************
+
+SET
+********* QUERY **********
+SET client_min_messages = warning;
+**************************
+
+SET
+********* QUERY **********
+SET row_security = off;
+**************************
+
+SET
+********* QUERY **********
+CREATE FUNCTION public.prevent_room_rename() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.name IS DISTINCT FROM OLD.name THEN
+    RAISE EXCEPTION 'Room/town names are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+**************************
+
+CREATE FUNCTION
+********* QUERY **********
+SET default_tablespace = '';
+**************************
+
+SET
+********* QUERY **********
+SET default_table_access_method = heap;
+**************************
+
+SET
+********* QUERY **********
+CREATE TABLE public.bounties (
+    id integer NOT NULL,
+    target_id integer NOT NULL,
+    amount integer NOT NULL,
+    reason text,
+    active boolean DEFAULT true NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.bounties_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.bounties_id_seq OWNED BY public.bounties.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.building_types (
+    key text NOT NULL,
+    name text NOT NULL,
+    cost integer NOT NULL,
+    upkeep integer DEFAULT 0 NOT NULL,
+    effects jsonb DEFAULT '{}'::jsonb NOT NULL
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE TABLE public.history (
+    id integer NOT NULL,
+    event text,
+    created_at timestamp without time zone DEFAULT now()
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.history_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.history_id_seq OWNED BY public.history.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.homes (
+    id integer NOT NULL,
+    player_id integer NOT NULL,
+    room_id integer NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    tier text DEFAULT 'shack'::text NOT NULL,
+    world_x integer,
+    world_y integer
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.homes_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.homes_id_seq OWNED BY public.homes.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.inventory_tools (
+    player_id integer NOT NULL,
+    bow_count integer DEFAULT 0 NOT NULL,
+    bow_uses integer DEFAULT 0 NOT NULL,
+    pickaxe_count integer DEFAULT 0 NOT NULL
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE TABLE public.job_claims (
+    id integer NOT NULL,
+    job_id integer,
+    player_id integer,
+    status text DEFAULT 'claimed'::text,
+    claimed_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT job_claims_status_check CHECK ((status = ANY (ARRAY['claimed'::text, 'completed'::text, 'abandoned'::text])))
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.job_claims_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.job_claims_id_seq OWNED BY public.job_claims.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.jobs (
+    id integer NOT NULL,
+    room_id integer,
+    type text,
+    req_item text,
+    req_qty integer NOT NULL,
+    dest_room text,
+    gold_reward integer NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    expires_at timestamp with time zone,
+    CONSTRAINT jobs_type_check CHECK ((type = ANY (ARRAY['forage'::text, 'hunt'::text, 'mine'::text, 'courier'::text])))
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.jobs_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.jobs_id_seq OWNED BY public.jobs.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.market_makers (
+    id integer NOT NULL,
+    room_id integer NOT NULL,
+    player_id integer NOT NULL,
+    resource text NOT NULL,
+    day_id bigint NOT NULL,
+    percent integer DEFAULT 10 NOT NULL,
+    created_at timestamp without time zone DEFAULT now()
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.market_makers_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.market_makers_id_seq OWNED BY public.market_makers.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.npcs_bandits (
+    id integer NOT NULL,
+    room_id integer NOT NULL,
+    world_x integer NOT NULL,
+    world_y integer NOT NULL,
+    hp integer DEFAULT 40 NOT NULL,
+    power integer DEFAULT 60 NOT NULL,
+    reward integer DEFAULT 60 NOT NULL,
+    expires_at timestamp without time zone NOT NULL,
+    alive boolean DEFAULT true NOT NULL
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.npcs_bandits_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.npcs_bandits_id_seq OWNED BY public.npcs_bandits.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.player_effects (
+    id integer NOT NULL,
+    player_id integer NOT NULL,
+    effect text NOT NULL,
+    magnitude integer DEFAULT 1 NOT NULL,
+    expires_at timestamp without time zone NOT NULL
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.player_effects_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.player_effects_id_seq OWNED BY public.player_effects.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.player_tools (
+    id integer NOT NULL,
+    player_id integer NOT NULL,
+    tool_key text NOT NULL,
+    durability integer NOT NULL
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.player_tools_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.player_tools_id_seq OWNED BY public.player_tools.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.players (
+    id integer NOT NULL,
+    socket_id text,
+    username text,
+    room text DEFAULT 'Capital'::text,
+    gold integer DEFAULT 0,
+    fruit integer DEFAULT 0,
+    wood integer DEFAULT 0,
+    stone integer DEFAULT 0,
+    hunger integer DEFAULT 100,
+    role text DEFAULT 'Peasant'::text,
+    alive boolean DEFAULT true,
+    home_room text,
+    home_x integer,
+    home_y integer,
+    wanted boolean DEFAULT false NOT NULL,
+    meat integer DEFAULT 0,
+    wellfed_until timestamp without time zone,
+    food integer DEFAULT 0,
+    token text,
+    persistent_id text,
+    last_seen timestamp with time zone DEFAULT now()
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.players_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.players_id_seq OWNED BY public.players.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.room_buildings (
+    room_id integer NOT NULL,
+    bkey text NOT NULL,
+    built_at timestamp with time zone DEFAULT now() NOT NULL,
+    level integer DEFAULT 1 NOT NULL
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE TABLE public.room_stock (
+    room_id integer NOT NULL,
+    resource text NOT NULL,
+    qty integer DEFAULT 0 NOT NULL,
+    CONSTRAINT room_stock_resource_check CHECK ((resource = ANY (ARRAY['food'::text, 'meat'::text, 'wood'::text, 'stone'::text])))
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE TABLE public.rooms (
+    id integer NOT NULL,
+    name text NOT NULL,
+    terrain text DEFAULT 'plains'::text NOT NULL,
+    living_quality integer DEFAULT 0 NOT NULL,
+    distance_from_capital integer DEFAULT 0 NOT NULL,
+    tax_rate integer DEFAULT 10 NOT NULL,
+    owner_player_id integer,
+    price_food integer DEFAULT 1,
+    price_meat integer DEFAULT 3,
+    price_wood integer DEFAULT 1,
+    price_stone integer DEFAULT 2,
+    price_bow integer DEFAULT 20,
+    price_pickaxe integer DEFAULT 25,
+    price_fruit integer DEFAULT 1,
+    treasury_gold integer DEFAULT 5000,
+    quota_fruit integer DEFAULT 300,
+    quota_meat integer DEFAULT 150,
+    quota_stone integer DEFAULT 200,
+    quota_wood integer DEFAULT 250,
+    floor_fruit integer DEFAULT 1,
+    floor_meat integer DEFAULT 3,
+    floor_stone integer DEFAULT 2,
+    floor_wood integer DEFAULT 1,
+    quotas_day integer DEFAULT 0,
+    world_x integer,
+    world_y integer,
+    is_ocean boolean DEFAULT false,
+    tax_free_up_to integer DEFAULT 10 NOT NULL,
+    pop_cap integer DEFAULT 50 NOT NULL,
+    lq_bonus integer DEFAULT 0 NOT NULL,
+    resident_cap integer DEFAULT 20
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.rooms_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.rooms_id_seq OWNED BY public.rooms.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.tiles (
+    id integer NOT NULL,
+    room_id integer NOT NULL,
+    x integer NOT NULL,
+    y integer NOT NULL,
+    terrain text DEFAULT 'plains'::text NOT NULL,
+    living_quality integer DEFAULT 0 NOT NULL
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.tiles_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.tiles_id_seq OWNED BY public.tiles.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.treasure_sites (
+    id integer NOT NULL,
+    room_id integer NOT NULL,
+    world_x integer NOT NULL,
+    world_y integer NOT NULL,
+    clue text,
+    reward integer DEFAULT 100 NOT NULL,
+    remaining integer DEFAULT 1 NOT NULL,
+    chance_bp integer DEFAULT 120 NOT NULL,
+    expires_at timestamp without time zone NOT NULL,
+    active boolean DEFAULT true NOT NULL
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE SEQUENCE public.treasure_sites_id_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+**************************
+
+CREATE SEQUENCE
+********* QUERY **********
+ALTER SEQUENCE public.treasure_sites_id_seq OWNED BY public.treasure_sites.id;
+**************************
+
+ALTER SEQUENCE
+********* QUERY **********
+CREATE TABLE public.world_cells (
+    x integer NOT NULL,
+    y integer NOT NULL,
+    biome text NOT NULL,
+    living_quality integer NOT NULL,
+    elev real NOT NULL,
+    lq integer,
+    CONSTRAINT world_cells_biome_check CHECK ((biome = ANY (ARRAY['ocean'::text, 'coast'::text, 'plains'::text, 'forest'::text, 'hills'::text, 'mountain'::text])))
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+CREATE TABLE public.world_meta (
+    id integer DEFAULT 1 NOT NULL,
+    seed text NOT NULL,
+    width integer NOT NULL,
+    height integer NOT NULL,
+    created_at timestamp without time zone DEFAULT now() NOT NULL
+);
+**************************
+
+CREATE TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.bounties ALTER COLUMN id SET DEFAULT nextval('public.bounties_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.history ALTER COLUMN id SET DEFAULT nextval('public.history_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.homes ALTER COLUMN id SET DEFAULT nextval('public.homes_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.job_claims ALTER COLUMN id SET DEFAULT nextval('public.job_claims_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.jobs ALTER COLUMN id SET DEFAULT nextval('public.jobs_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.market_makers ALTER COLUMN id SET DEFAULT nextval('public.market_makers_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.npcs_bandits ALTER COLUMN id SET DEFAULT nextval('public.npcs_bandits_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.player_effects ALTER COLUMN id SET DEFAULT nextval('public.player_effects_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.player_tools ALTER COLUMN id SET DEFAULT nextval('public.player_tools_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.players ALTER COLUMN id SET DEFAULT nextval('public.players_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.rooms ALTER COLUMN id SET DEFAULT nextval('public.rooms_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.tiles ALTER COLUMN id SET DEFAULT nextval('public.tiles_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.treasure_sites ALTER COLUMN id SET DEFAULT nextval('public.treasure_sites_id_seq'::regclass);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+COPY public.bounties (id, target_id, amount, reason, active, created_at) FROM stdin;
+**************************
+
+COPY 1
+********* QUERY **********
+COPY public.building_types (key, name, cost, upkeep, effects) FROM stdin;
+**************************
+
+COPY 6
+********* QUERY **********
+COPY public.history (id, event, created_at) FROM stdin;
+**************************
+
+COPY 0
+********* QUERY **********
+COPY public.homes (id, player_id, room_id, x, y, tier, world_x, world_y) FROM stdin;
+**************************
+
+COPY 2
+********* QUERY **********
+COPY public.inventory_tools (player_id, bow_count, bow_uses, pickaxe_count) FROM stdin;
+**************************
+
+COPY 0
+********* QUERY **********
+COPY public.job_claims (id, job_id, player_id, status, claimed_at) FROM stdin;
+**************************
+
+COPY 0
+********* QUERY **********
+COPY public.jobs (id, room_id, type, req_item, req_qty, dest_room, gold_reward, created_at, expires_at) FROM stdin;
+**************************
+
+COPY 30
+********* QUERY **********
+COPY public.market_makers (id, room_id, player_id, resource, day_id, percent, created_at) FROM stdin;
+**************************
+
+COPY 1
+********* QUERY **********
+COPY public.npcs_bandits (id, room_id, world_x, world_y, hp, power, reward, expires_at, alive) FROM stdin;
+**************************
+
+COPY 45
+********* QUERY **********
+COPY public.player_effects (id, player_id, effect, magnitude, expires_at) FROM stdin;
+**************************
+
+COPY 0
+********* QUERY **********
+COPY public.player_tools (id, player_id, tool_key, durability) FROM stdin;
+**************************
+
+COPY 11
+********* QUERY **********
+COPY public.players (id, socket_id, username, room, gold, fruit, wood, stone, hunger, role, alive, home_room, home_x, home_y, wanted, meat, wellfed_until, food, token, persistent_id, last_seen) FROM stdin;
+**************************
+
+COPY 120
+********* QUERY **********
+COPY public.room_buildings (room_id, bkey, built_at, level) FROM stdin;
+**************************
+
+COPY 2
+********* QUERY **********
+COPY public.room_stock (room_id, resource, qty) FROM stdin;
+**************************
+
+COPY 2
+********* QUERY **********
+COPY public.rooms (id, name, terrain, living_quality, distance_from_capital, tax_rate, owner_player_id, price_food, price_meat, price_wood, price_stone, price_bow, price_pickaxe, price_fruit, treasury_gold, quota_fruit, quota_meat, quota_stone, quota_wood, floor_fruit, floor_meat, floor_stone, floor_wood, quotas_day, world_x, world_y, is_ocean, tax_free_up_to, pop_cap, lq_bonus, resident_cap) FROM stdin;
+**************************
+
+COPY 3
+********* QUERY **********
+COPY public.tiles (id, room_id, x, y, terrain, living_quality) FROM stdin;
+**************************
+
+COPY 0
+********* QUERY **********
+COPY public.treasure_sites (id, room_id, world_x, world_y, clue, reward, remaining, chance_bp, expires_at, active) FROM stdin;
+**************************
+
+COPY 22
+********* QUERY **********
+COPY public.world_cells (x, y, biome, living_quality, elev, lq) FROM stdin;
+**************************
+
+COPY 65536
+********* QUERY **********
+COPY public.world_meta (id, seed, width, height, created_at) FROM stdin;
+**************************
+
+COPY 1
+********* QUERY **********
+SELECT pg_catalog.setval('public.bounties_id_seq', 1, true);
+**************************
+
+ setval 
+--------
+      1
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.history_id_seq', 1, false);
+**************************
+
+ setval 
+--------
+      1
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.homes_id_seq', 8, true);
+**************************
+
+ setval 
+--------
+      8
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.job_claims_id_seq', 1, true);
+**************************
+
+ setval 
+--------
+      1
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.jobs_id_seq', 683, true);
+**************************
+
+ setval 
+--------
+    683
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.market_makers_id_seq', 1, true);
+**************************
+
+ setval 
+--------
+      1
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.npcs_bandits_id_seq', 54, true);
+**************************
+
+ setval 
+--------
+     54
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.player_effects_id_seq', 4302, true);
+**************************
+
+ setval 
+--------
+   4302
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.player_tools_id_seq', 13, true);
+**************************
+
+ setval 
+--------
+     13
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.players_id_seq', 168, true);
+**************************
+
+ setval 
+--------
+    168
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.rooms_id_seq', 8, true);
+**************************
+
+ setval 
+--------
+      8
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.tiles_id_seq', 1, false);
+**************************
+
+ setval 
+--------
+      1
+(1 row)
+
+********* QUERY **********
+SELECT pg_catalog.setval('public.treasure_sites_id_seq', 25, true);
+**************************
+
+ setval 
+--------
+     25
+(1 row)
+
+********* QUERY **********
+ALTER TABLE ONLY public.bounties
+    ADD CONSTRAINT bounties_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.building_types
+    ADD CONSTRAINT building_types_pkey PRIMARY KEY (key);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.history
+    ADD CONSTRAINT history_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.homes
+    ADD CONSTRAINT homes_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.homes
+    ADD CONSTRAINT homes_player_id_key UNIQUE (player_id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.homes
+    ADD CONSTRAINT homes_room_id_x_y_key UNIQUE (room_id, x, y);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.inventory_tools
+    ADD CONSTRAINT inventory_tools_pkey PRIMARY KEY (player_id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.job_claims
+    ADD CONSTRAINT job_claims_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.jobs
+    ADD CONSTRAINT jobs_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.market_makers
+    ADD CONSTRAINT market_makers_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.market_makers
+    ADD CONSTRAINT market_makers_room_id_resource_day_id_key UNIQUE (room_id, resource, day_id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.npcs_bandits
+    ADD CONSTRAINT npcs_bandits_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.player_effects
+    ADD CONSTRAINT player_effects_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.player_tools
+    ADD CONSTRAINT player_tools_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.players
+    ADD CONSTRAINT players_persistent_id_key UNIQUE (persistent_id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.players
+    ADD CONSTRAINT players_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.players
+    ADD CONSTRAINT players_token_key UNIQUE (token);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.players
+    ADD CONSTRAINT players_username_key UNIQUE (username);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.room_buildings
+    ADD CONSTRAINT room_buildings_pkey PRIMARY KEY (room_id, bkey);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.room_stock
+    ADD CONSTRAINT room_stock_pkey PRIMARY KEY (room_id, resource);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.rooms
+    ADD CONSTRAINT rooms_name_key UNIQUE (name);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.rooms
+    ADD CONSTRAINT rooms_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.tiles
+    ADD CONSTRAINT tiles_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.tiles
+    ADD CONSTRAINT tiles_room_id_x_y_key UNIQUE (room_id, x, y);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.treasure_sites
+    ADD CONSTRAINT treasure_sites_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.world_cells
+    ADD CONSTRAINT world_cells_pkey PRIMARY KEY (x, y);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.world_meta
+    ADD CONSTRAINT world_meta_pkey PRIMARY KEY (id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+CREATE INDEX homes_world_idx ON public.homes USING btree (world_x, world_y);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX idx_player_effects_exp ON public.player_effects USING btree (expires_at);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX idx_player_effects_player ON public.player_effects USING btree (player_id);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX idx_player_effects_player_expires ON public.player_effects USING btree (player_id, expires_at);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX idx_player_tools_player ON public.player_tools USING btree (player_id);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX idx_players_last_seen ON public.players USING btree (last_seen);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE UNIQUE INDEX idx_players_token ON public.players USING btree (token);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX idx_rooms_world_xy ON public.rooms USING btree (world_x, world_y);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX job_claims_player_id_idx ON public.job_claims USING btree (player_id);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX jobs_room_id_idx ON public.jobs USING btree (room_id);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX npcs_bandits_alive_idx ON public.npcs_bandits USING btree (alive, expires_at);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX players_last_seen_idx ON public.players USING btree (last_seen);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX rooms_world_xy ON public.rooms USING btree (world_x, world_y);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE INDEX treasure_sites_active_idx ON public.treasure_sites USING btree (active, expires_at);
+**************************
+
+CREATE INDEX
+********* QUERY **********
+CREATE TRIGGER trg_rooms_lock_name BEFORE UPDATE ON public.rooms FOR EACH ROW EXECUTE FUNCTION public.prevent_room_rename();
+**************************
+
+CREATE TRIGGER
+********* QUERY **********
+ALTER TABLE ONLY public.bounties
+    ADD CONSTRAINT bounties_target_id_fkey FOREIGN KEY (target_id) REFERENCES public.players(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.homes
+    ADD CONSTRAINT homes_player_fk FOREIGN KEY (player_id) REFERENCES public.players(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.homes
+    ADD CONSTRAINT homes_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.players(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.homes
+    ADD CONSTRAINT homes_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.inventory_tools
+    ADD CONSTRAINT inventory_tools_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.players(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.job_claims
+    ADD CONSTRAINT job_claims_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.jobs(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.job_claims
+    ADD CONSTRAINT job_claims_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.players(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.jobs
+    ADD CONSTRAINT jobs_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.market_makers
+    ADD CONSTRAINT market_makers_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.players(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.market_makers
+    ADD CONSTRAINT market_makers_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.npcs_bandits
+    ADD CONSTRAINT npcs_bandits_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.player_effects
+    ADD CONSTRAINT player_effects_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.players(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.player_tools
+    ADD CONSTRAINT player_tools_player_id_fkey FOREIGN KEY (player_id) REFERENCES public.players(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.room_buildings
+    ADD CONSTRAINT room_buildings_bkey_fkey FOREIGN KEY (bkey) REFERENCES public.building_types(key);
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.room_buildings
+    ADD CONSTRAINT room_buildings_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.room_stock
+    ADD CONSTRAINT room_stock_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.rooms
+    ADD CONSTRAINT rooms_owner_player_id_fkey FOREIGN KEY (owner_player_id) REFERENCES public.players(id) ON DELETE SET NULL;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.tiles
+    ADD CONSTRAINT tiles_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+ALTER TABLE ONLY public.treasure_sites
+    ADD CONSTRAINT treasure_sites_room_id_fkey FOREIGN KEY (room_id) REFERENCES public.rooms(id) ON DELETE CASCADE;
+**************************
+
+ALTER TABLE
+********* QUERY **********
+SET statement_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET lock_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET idle_in_transaction_session_timeout = 0;
+**************************
+
+SET
+********* QUERY **********
+SET client_encoding = 'UTF8';
+**************************
+
+SET
+********* QUERY **********
+SET standard_conforming_strings = on;
+**************************
+
+SET
+********* QUERY **********
+SELECT pg_catalog.set_config('search_path', '', false);
+**************************
+
+ set_config 
+------------
+ 
+(1 row)
+
+********* QUERY **********
+SET check_function_bodies = false;
+**************************
+
+SET
+********* QUERY **********
+SET xmloption = content;
+**************************
+
+SET
+********* QUERY **********
+SET client_min_messages = warning;
+**************************
+
+SET
+********* QUERY **********
+SET row_security = off;
+**************************
+
+SET
+********* QUERY **********
+CREATE FUNCTION public.prevent_room_rename() RETURNS trigger
+    LANGUAGE plpgsql
+    AS $$
+BEGIN
+  IF NEW.name IS DISTINCT FROM OLD.name THEN
+    RAISE EXCEPTION 'Room/town names are immutable';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+**************************
+
