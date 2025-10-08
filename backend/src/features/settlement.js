@@ -53,10 +53,12 @@ async function recalcTownStats(roomId) {
 }
 
 // --------------------------------------------
-// Ensure DB has capacity column
+// Ensure DB columns exist
 // --------------------------------------------
 async function ensureRoomCapColumn() {
   await dbq("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS resident_cap INT DEFAULT 20", []);
+  await dbq("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS world_x INT", []);
+  await dbq("ALTER TABLE rooms ADD COLUMN IF NOT EXISTS world_y INT", []);
 }
 
 // --------------------------------------------
@@ -82,7 +84,6 @@ async function nextFreeHomeSlot(roomId) {
       if (!used.has(k)) return { x, y };
     }
   }
-  // fallback if map full
   return { x: Math.floor(Math.random() * 1000), y: Math.floor(Math.random() * 1000) };
 }
 
@@ -114,24 +115,20 @@ function initSettlementFeature(registry) {
     const me = await ctx.getPlayer(socket, true);
     if (!me) return ctx.you(socket, "No player record found.");
 
-    // Look up current room (case-insensitive)
+    // Pull current room from 'rooms'
     const roomRes = await dbq(
-      "SELECT id, name, world_x, world_y, living_quality, resident_cap FROM rooms WHERE LOWER(name)=LOWER($1) LIMIT 1",
+      "SELECT id, name, COALESCE(world_x,-1) AS world_x, COALESCE(world_y,-1) AS world_y, living_quality, resident_cap FROM rooms WHERE LOWER(name)=LOWER($1) LIMIT 1",
       [me.room]
     );
     if (!roomRes.length) {
-      return ctx.you(socket, "Error: current room not found. Use /travel Town first.");
+      return ctx.you(socket, `Error: current room '${me.room}' not found.`);
     }
     const room = roomRes[0];
     const isCapital = room.name.toLowerCase() === "capital";
 
-    // Must be a town or the capital
-    const townCheck = await dbq(
-      "SELECT 1 FROM towns WHERE LOWER(name)=LOWER($1) OR is_capital=TRUE LIMIT 1",
-      [room.name]
-    );
-    if (!townCheck.length && !isCapital) {
-      return ctx.you(socket, "You can only settle inside a town or the Capital. Use /travel Town first.");
+    // ✅ Instead of checking non-existent 'towns', rely on rooms with coords
+    if (room.world_x < 0 || room.world_y < 0) {
+      return ctx.you(socket, "This settlement has no map coordinates yet. Use /found or /travel to a mapped town.");
     }
 
     // Update resident cap dynamically
