@@ -3,6 +3,8 @@ const { dbq } = require("../db");
 const { register } = require("../core/commands");
 
 const NOMAD_CAP = 10;
+const SETTLE_COST = 50;
+const UPGRADE_COSTS = { hut: 100, house: 300, manor: 600 };
 
 // --------------------------------------------
 // Home storage capacity by tier
@@ -109,7 +111,7 @@ function initSettlementFeature(registry) {
   };
 
   // --------------------------------------------
-  // /settle — Establish your home
+  // /settle — Establish your home (costs gold)
   // --------------------------------------------
   register("/settle", async (ctx, socket) => {
     const me = await ctx.getPlayer(socket, true);
@@ -126,12 +128,16 @@ function initSettlementFeature(registry) {
     if (room.world_x < 0 || room.world_y < 0)
       return ctx.you(socket, "This settlement has no map coordinates yet. Use /found or /travel to a mapped town.");
 
+    if ((me.gold || 0) < SETTLE_COST)
+      return ctx.you(socket, `You need ${SETTLE_COST} gold to establish a home.`);
+
     const lq = room.living_quality ?? 0;
     const popCap = await applyDynamicCap(room.id, lq, isCapital);
     const existingHomes = await dbq("SELECT COUNT(*)::int AS n FROM homes WHERE room_id=$1", [room.id]);
     if ((existingHomes[0]?.n || 0) >= popCap)
       return ctx.you(socket, `No space in ${room.name} (cap ${popCap}).`);
 
+    await dbq("UPDATE players SET gold=gold-$1 WHERE id=$2", [SETTLE_COST, me.id]);
     await dbq("DELETE FROM homes WHERE player_id=$1", [me.id]);
 
     const slot = await nextFreeHomeSlot(room.id);
@@ -143,12 +149,11 @@ function initSettlementFeature(registry) {
     await dbq("UPDATE players SET home_room=$1, home_x=$2, home_y=$3 WHERE id=$4",
       [room.name, room.world_x, room.world_y, me.id]);
 
-    ctx.sys(room.name, `${me.username} settled in ${room.name}.`);
-    ctx.you(socket, `🏠 Home established in ${room.name}. You can now /uphome hut|house|manor.`);
-
     const me2 = (await dbq("SELECT * FROM players WHERE id=$1", [me.id]))[0];
+    ctx.sys(room.name, `${me.username} settled in ${room.name}.`);
+    ctx.you(socket, `💰 Spent ${SETTLE_COST} gold. 🏠 Home established in ${room.name}. You can now /uphome hut|house|manor.`);
     ctx.sendState(socket, me2);
-  }, "— settle in your current town (creates a home if within valid limits)");
+  }, "— settle in your current town (50g cost, creates your first home)");
 
   // --------------------------------------------
   // /where — Current physical location
@@ -160,7 +165,7 @@ function initSettlementFeature(registry) {
     const room = r[0];
     const type = room.name.toLowerCase() === "capital" ? "Capital" : "Town";
     ctx.you(socket, `📍 You are in ${type}: ${room.name} (${room.world_x},${room.world_y}) — ${room.terrain}, LQ ${room.living_quality}`);
-  }, "— show your current location on the map");
+  }, "— show your current map position");
 
   // --------------------------------------------
   // /home — Show player’s own home info
@@ -200,8 +205,6 @@ function initSettlementFeature(registry) {
     if (!home) return ctx.you(socket, "You need a home first. Use /settle");
 
     const order = ["shack", "hut", "house", "manor"];
-    const costs = { hut: 100, house: 300, manor: 600 };
-
     const cur = (home.tier || "shack").toLowerCase();
     const want = (parts[1] || "").toLowerCase();
 
@@ -212,7 +215,7 @@ function initSettlementFeature(registry) {
     if (want !== next)
       return ctx.you(socket, `You must upgrade step-by-step. Next is ${next}.`);
 
-    const cost = costs[want] || 100;
+    const cost = UPGRADE_COSTS[want] || 100;
     if ((me.gold || 0) < cost)
       return ctx.you(socket, `You need ${cost} gold to upgrade to ${want}.`);
 
@@ -220,9 +223,11 @@ function initSettlementFeature(registry) {
     await dbq("UPDATE homes SET tier=$1 WHERE player_id=$2", [want, me.id]);
 
     const cap = homeCapacity(want);
+    const me2 = (await dbq("SELECT * FROM players WHERE id=$1", [me.id]))[0];
     ctx.sys(me.room, `${me.username} upgraded home to ${want} (cap ${cap}).`);
     ctx.you(socket, `💰 Spent ${cost} gold. Home upgraded to ${want} (storage cap ${cap}).`);
-  }, "hut|house|manor — upgrade your home with gold");
+    ctx.sendState(socket, me2);
+  }, "hut|house|manor — upgrade your home with gold (100g/300g/600g)");
 }
 
 module.exports = {
