@@ -115,47 +115,33 @@ function initSettlementFeature(registry) {
     const me = await ctx.getPlayer(socket, true);
     if (!me) return ctx.you(socket, "No player record found.");
 
-    // Pull current room from 'rooms'
     const roomRes = await dbq(
       "SELECT id, name, COALESCE(world_x,-1) AS world_x, COALESCE(world_y,-1) AS world_y, living_quality, resident_cap FROM rooms WHERE LOWER(name)=LOWER($1) LIMIT 1",
       [me.room]
     );
-    if (!roomRes.length) {
-      return ctx.you(socket, `Error: current room '${me.room}' not found.`);
-    }
+    if (!roomRes.length) return ctx.you(socket, `Error: current room '${me.room}' not found.`);
     const room = roomRes[0];
     const isCapital = room.name.toLowerCase() === "capital";
 
-    // ✅ Instead of checking non-existent 'towns', rely on rooms with coords
-    if (room.world_x < 0 || room.world_y < 0) {
+    if (room.world_x < 0 || room.world_y < 0)
       return ctx.you(socket, "This settlement has no map coordinates yet. Use /found or /travel to a mapped town.");
-    }
 
-    // Update resident cap dynamically
     const lq = room.living_quality ?? 0;
     const popCap = await applyDynamicCap(room.id, lq, isCapital);
-
     const existingHomes = await dbq("SELECT COUNT(*)::int AS n FROM homes WHERE room_id=$1", [room.id]);
-    const currentPop = existingHomes[0]?.n || 0;
-    if (currentPop >= popCap) {
+    if ((existingHomes[0]?.n || 0) >= popCap)
       return ctx.you(socket, `No space in ${room.name} (cap ${popCap}).`);
-    }
 
-    // Remove previous home if any
     await dbq("DELETE FROM homes WHERE player_id=$1", [me.id]);
 
-    // Assign new home slot
     const slot = await nextFreeHomeSlot(room.id);
     await dbq(`
       INSERT INTO homes (player_id, room_id, x, y, tier, world_x, world_y)
       VALUES ($1, $2, $3, $4, 'shack', $5, $6)
     `, [me.id, room.id, slot.x, slot.y, room.world_x, room.world_y]);
 
-    // Update player
-    await dbq(
-      "UPDATE players SET home_room=$1, home_x=$2, home_y=$3 WHERE id=$4",
-      [room.name, room.world_x, room.world_y, me.id]
-    );
+    await dbq("UPDATE players SET home_room=$1, home_x=$2, home_y=$3 WHERE id=$4",
+      [room.name, room.world_x, room.world_y, me.id]);
 
     ctx.sys(room.name, `${me.username} settled in ${room.name}.`);
     ctx.you(socket, `🏠 Home established in ${room.name}. You can now /uphome hut|house|manor.`);
@@ -165,22 +151,48 @@ function initSettlementFeature(registry) {
   }, "— settle in your current town (creates a home if within valid limits)");
 
   // --------------------------------------------
-  // /where — Display player home + room
+  // /where — Current physical location
   // --------------------------------------------
   register("/where", async (ctx, socket) => {
     const me = await ctx.getPlayer(socket, true);
-    const home = await getHome(me.id);
-    if (!home) {
-      return ctx.you(socket, `Room: ${me.room}. No home yet. Use /settle`);
-    }
-    const wx = home.world_x ?? 0;
-    const wy = home.world_y ?? 0;
-    const rName = home.room_name || me.room;
-    ctx.you(socket, `Home: ${rName} · tier=${home.tier} (coords ${wx},${wy})`);
-  }, "— show your home and world coordinates");
+    const r = await dbq("SELECT name, world_x, world_y, terrain, living_quality FROM rooms WHERE LOWER(name)=LOWER($1)", [me.room]);
+    if (!r.length) return ctx.you(socket, "You are in an unknown area.");
+    const room = r[0];
+    const type = room.name.toLowerCase() === "capital" ? "Capital" : "Town";
+    ctx.you(socket, `📍 You are in ${type}: ${room.name} (${room.world_x},${room.world_y}) — ${room.terrain}, LQ ${room.living_quality}`);
+  }, "— show your current location on the map");
 
   // --------------------------------------------
-  // /uphome — Upgrade your home tier
+  // /home — Show player’s own home info
+  // --------------------------------------------
+  register("/home", async (ctx, socket) => {
+    const me = await ctx.getPlayer(socket, true);
+    const home = await getHome(me.id);
+    if (!home) return ctx.you(socket, "You have no home yet. Use /settle first.");
+    ctx.you(socket, `Home: ${home.room_name} · tier=${home.tier} (coords ${home.world_x},${home.world_y})`);
+  }, "— show your personal home coordinates");
+
+  // --------------------------------------------
+  // /settlements — List all named towns & coords
+  // --------------------------------------------
+  register("/settlements", async (ctx, socket) => {
+    const rows = await dbq(`
+      SELECT name, world_x, world_y, owner_player_id, resident_cap
+      FROM rooms
+      WHERE world_x IS NOT NULL AND world_y IS NOT NULL
+      ORDER BY name ASC
+    `);
+    if (!rows.length) return ctx.you(socket, "No settlements found.");
+    for (const r of rows) {
+      const owner = r.owner_player_id
+        ? (await dbq("SELECT username FROM players WHERE id=$1", [r.owner_player_id]))[0]?.username || "—"
+        : "—";
+      ctx.you(socket, `${r.name} (${r.world_x},${r.world_y}) · Owner: ${owner} · Cap: ${r.resident_cap}`);
+    }
+  }, "— list all known towns and their coordinates");
+
+  // --------------------------------------------
+  // /uphome — Upgrade home tier (costs gold)
   // --------------------------------------------
   register("/uphome", async (ctx, socket, parts) => {
     const me = await ctx.getPlayer(socket, true);
@@ -188,6 +200,8 @@ function initSettlementFeature(registry) {
     if (!home) return ctx.you(socket, "You need a home first. Use /settle");
 
     const order = ["shack", "hut", "house", "manor"];
+    const costs = { hut: 100, house: 300, manor: 600 };
+
     const cur = (home.tier || "shack").toLowerCase();
     const want = (parts[1] || "").toLowerCase();
 
@@ -198,12 +212,17 @@ function initSettlementFeature(registry) {
     if (want !== next)
       return ctx.you(socket, `You must upgrade step-by-step. Next is ${next}.`);
 
-    await dbq("UPDATE homes SET tier=$1 WHERE player_id=$2", [want, me.id]);
-    const cap = homeCapacity(want);
+    const cost = costs[want] || 100;
+    if ((me.gold || 0) < cost)
+      return ctx.you(socket, `You need ${cost} gold to upgrade to ${want}.`);
 
-    ctx.sys(me.room, `${me.username} upgraded home to ${want} (storage cap ${cap}).`);
-    ctx.you(socket, `Home upgraded to ${want}. You can now store up to ${cap} resources.`);
-  }, "hut|house|manor — upgrade your home step by step");
+    await dbq("UPDATE players SET gold=gold-$1 WHERE id=$2", [cost, me.id]);
+    await dbq("UPDATE homes SET tier=$1 WHERE player_id=$2", [want, me.id]);
+
+    const cap = homeCapacity(want);
+    ctx.sys(me.room, `${me.username} upgraded home to ${want} (cap ${cap}).`);
+    ctx.you(socket, `💰 Spent ${cost} gold. Home upgraded to ${want} (storage cap ${cap}).`);
+  }, "hut|house|manor — upgrade your home with gold");
 }
 
 module.exports = {
